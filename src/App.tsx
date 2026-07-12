@@ -47,23 +47,66 @@ const P1_SLOT    = { x: 7.06, y: 5.91, w: 85.87, h: 69.25 };
 const P1_CAPTION = { x: 5, y: 75.5, w: 90, h: 19 };
 const P1_DIMS    = { w: 180, h: 213 };
 
-// Film strip: viewBox 565 × (251+494*N) – same geometry as photostrip but with film aesthetic
+// Film strip: Figma-accurate design
+// Figma source: 650px wide, photos at x=76,w=502, sprocket holes 40×40 on left(x=17) and right(x=598)
 // Film canister: 120×230 base dimensions
 const FILM_CAN_DIMS = { w: 80, h: 153 };
 
+// Render scale: we display the strip at ~200px wide
+const FILM_RENDER_W = 200;
+
 function getFilmConfig(n: number) {
-  const sprocketW = 16, photoW = 128, photoH = 128, gap = 6, padTop = 16, padBot = 8, capH = 36;
-  const W = sprocketW * 2 + photoW; // 160
-  const H = padTop + n * photoH + (n - 1) * gap + padBot + capH;
+  // Figma units (650-wide coordinate space)
+  const FW = 650;
+  const photoX = 76, photoW = 502;
+  const padTop = 25, photoH = 480, gap = 22;
+  const capH = 48, padBot = 18;
+  const FH = padTop + n * photoH + (n - 1) * gap + padBot + capH;
+
+  const scale = FILM_RENDER_W / FW;
+
   const slots = Array.from({ length: n }, (_, i) => {
     const y = padTop + i * (photoH + gap);
-    return { x: sprocketW / W * 100, y: y / H * 100, w: photoW / W * 100, h: photoH / H * 100 };
+    return { x: photoX / FW * 100, y: y / FH * 100, w: photoW / FW * 100, h: photoH / FH * 100 };
   });
-  const capY = (padTop + n * photoH + (n - 1) * gap + padBot) / H * 100;
+
+  const capY = (padTop + n * photoH + (n - 1) * gap + padBot) / FH * 100;
+
+  // Build SVG with film aesthetic matching Figma
+  const holeW = 40, holeH = 34, holeRx = 5;
+  const leftX = 17, rightX = 598;
+  // 8 sprocket holes per ~512px group, evenly spaced
+  const holeSpacing = (photoH + gap) / 8;
+  const holesPerSlot = 8;
+  const totalHoles = n * holesPerSlot;
+
+  const holes: string[] = [];
+  for (let i = 0; i < totalHoles; i++) {
+    const hy = padTop + i * holeSpacing + (holeSpacing - holeH) / 2;
+    holes.push(
+      `<rect x="${leftX}" y="${hy.toFixed(1)}" width="${holeW}" height="${holeH}" rx="${holeRx}" fill="#2a2a2a"/>`,
+      `<rect x="${rightX}" y="${hy.toFixed(1)}" width="${holeW}" height="${holeH}" rx="${holeRx}" fill="#2a2a2a"/>`,
+    );
+  }
+
+  // Photo slot placeholders
+  const photoSlots = Array.from({ length: n }, (_, i) => {
+    const y = padTop + i * (photoH + gap);
+    return `<rect x="${photoX}" y="${y}" width="${photoW}" height="${photoH}" fill="#2d2d2d"/>`;
+  });
+
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${FW} ${FH}">
+    <rect x="0" y="0" width="${FW}" height="${FH}" fill="#1c1c1c"/>
+    <rect x="0" y="0" width="${FW}" height="${FH}" fill="#3C3B3B"/>
+    ${photoSlots.join('')}
+    ${holes.join('')}
+  </svg>`;
+
   return {
-    dims: { w: W, h: H },
+    url: `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`,
+    dims: { w: FILM_RENDER_W, h: Math.round(FH * scale) },
     slots,
-    caption: { x: sprocketW / W * 100, y: capY, w: photoW / W * 100, h: capH / H * 100 },
+    caption: { x: photoX / FW * 100, y: capY, w: photoW / FW * 100, h: capH / FH * 100 },
   };
 }
 
@@ -399,6 +442,12 @@ function PhotoFrame({ data, isSelected, onSelect, onContextMenu, onPhotoChange, 
     dims = cfg.dims;
     slots = cfg.slots;
     capSlot = cfg.caption;
+  } else if (data.kind === 'film') {
+    const cfg = getFilmConfig(data.slotCount);
+    svgSrc = cfg.url;
+    dims = cfg.dims;
+    slots = cfg.slots;
+    capSlot = cfg.caption;
   } else {
     svgSrc = data.kind === 'polaroid1' ? '/polaroid1.svg' : '/polaroid2.svg';
     dims   = data.kind === 'polaroid1' ? P1_DIMS : P2_DIMS;
@@ -436,18 +485,9 @@ function PhotoFrame({ data, isSelected, onSelect, onContextMenu, onPhotoChange, 
 
       {isSelected && <SelectionOverlay elemId={'frame-'+data.id} rotation={data.rotation} scale={data.scale} onRotate={r => onRotateEnd(data.id, r)} onResize={s => onResizeEnd(data.id, s)} />}
 
-      {/* Background: film strip body or polaroid SVG */}
-      {data.kind === 'film'
-        ? <div style={{ position:'absolute', inset:0, background:'#1a1a1a', borderRadius:2 }}>
-            <div className="film-sprockets" style={{ position:'absolute', left:0, top:0, bottom:0, width:'10%' }}>
-              {Array.from({length: Math.floor(dims.h / 22)}, (_, i) => <div key={i} className="film-sprocket-hole" />)}
-            </div>
-            <div className="film-sprockets" style={{ position:'absolute', right:0, top:0, bottom:0, width:'10%' }}>
-              {Array.from({length: Math.floor(dims.h / 22)}, (_, i) => <div key={i} className="film-sprocket-hole" />)}
-            </div>
-          </div>
-        : <img src={svgSrc} alt={data.kind} draggable={false}
-            style={{ position:'absolute', inset:0, width:'100%', height:'100%', objectFit:'fill' }} />}
+      {/* Background: film strip / photostrip SVG or polaroid SVG */}
+      <img src={svgSrc} alt={data.kind} draggable={false}
+        style={{ position:'absolute', inset:0, width:'100%', height:'100%', objectFit:'fill' }} />
 
       {/* Washi tape */}
       {data.hasTape && (
@@ -471,9 +511,9 @@ function PhotoFrame({ data, isSelected, onSelect, onContextMenu, onPhotoChange, 
             {hasPhoto
               ? <img src={data.photos[i]} alt="" style={{ width:'100%', height:'100%', objectFit:'cover', display:'block' }} />
               : <div style={{ width:'100%', height:'100%', display:'flex', alignItems:'center', justifyContent:'center',
-                  background: data.kind==='film' ? '#000' : (data.kind==='photostrip'?'rgba(255,255,255,0.06)':'rgba(180,180,180,0.15)'),
-                  border: data.kind==='film' ? '1px solid #333' : '2px dashed rgba(120,120,120,0.38)', boxSizing:'border-box' }}>
-                  <span style={{ fontSize:28, color: data.kind==='film' ? 'rgba(255,255,255,0.3)' : (data.kind==='photostrip'?'rgba(255,255,255,0.45)':'rgba(80,80,80,0.5)'), fontWeight:300, pointerEvents:'none' }}>+</span>
+                  background: (data.kind==='film'||data.kind==='photostrip') ? 'rgba(255,255,255,0.04)' : 'rgba(180,180,180,0.15)',
+                  border: (data.kind==='film'||data.kind==='photostrip') ? '1.5px dashed rgba(255,255,255,0.2)' : '2px dashed rgba(120,120,120,0.38)', boxSizing:'border-box' }}>
+                  <span style={{ fontSize:28, color: (data.kind==='film'||data.kind==='photostrip') ? 'rgba(255,255,255,0.35)' : 'rgba(80,80,80,0.5)', fontWeight:300, pointerEvents:'none' }}>+</span>
                 </div>}
             <input type="file" accept="image/*" style={{ display:'none' }}
               onMouseDown={e=>e.stopPropagation()}
