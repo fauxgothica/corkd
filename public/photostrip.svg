@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 565 1733" preserveAspectRatio="xMidYMid meet">
+  <!-- White backing -->
+  <rect x="0" y="0" width="565" height="1733" fill="#FDFDFD"/>
+  <!-- Photo slot 1 -->
+  <rect x="28" y="41"   width="502" height="440" fill="#B78080"/>
+  <!-- Photo slot 2 -->
+  <rect x="28" y="535"  width="502" height="440" fill="#B78080"/>
+  <!-- Photo slot 3 -->
+  <rect x="28" y="1029" width="502" height="440" fill="#B78080"/>
+</svg>
