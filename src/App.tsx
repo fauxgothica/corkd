@@ -5,10 +5,9 @@ import {
   StickyNote, Image, Film, RotateCw, Undo2, Redo2, Upload, Maximize2,
 } from 'lucide-react';
 
-const supabase = createClient(
-  import.meta.env.VITE_SUPABASE_URL,
-  import.meta.env.VITE_SUPABASE_ANON_KEY
-);
+const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL ?? '';
+const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY ?? '';
+const supabase = SUPABASE_URL ? createClient(SUPABASE_URL, SUPABASE_ANON_KEY) : null as any;
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
