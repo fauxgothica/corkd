@@ -978,6 +978,73 @@ div[id^="frame-"]:hover .frame-remove-btn {
   background: transparent;
 }
 
+/* ── Keychain upload modal ─────────────────────────────────────── */
+.keychain-upload-modal {
+  background: #fefde6;
+  border-radius: 14px;
+  width: 340px;
+  overflow: hidden;
+  box-shadow: 0 16px 48px rgba(0,0,0,0.35);
+  font-family: 'Waiting for the Sunrise', cursive;
+}
+
+.keychain-upload-modal__header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 14px 18px;
+  background: rgba(74,222,128,0.18);
+  border-bottom: 1px dashed rgba(74,222,128,0.5);
+  font-size: 1.2rem;
+  font-weight: 700;
+  color: #1a3a1a;
+}
+.keychain-upload-modal__header button {
+  background: none; border: none; cursor: pointer; color: #888;
+  display: flex; padding: 2px; border-radius: 4px;
+}
+.keychain-upload-modal__header button:hover { background: rgba(0,0,0,0.07); }
+
+.keychain-upload-modal__hint {
+  padding: 12px 18px 4px;
+  font-size: 0.95rem;
+  color: #555;
+  margin: 0;
+  font-family: 'Shadows Into Light', sans-serif;
+}
+
+.keychain-upload-modal__drop {
+  margin: 10px 18px;
+  border: 2px dashed rgba(74,222,128,0.5);
+  border-radius: 12px;
+  min-height: 140px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  background: rgba(74,222,128,0.04);
+  transition: border-color 0.15s, background 0.15s;
+}
+.keychain-upload-modal__drop:hover {
+  border-color: rgba(74,222,128,0.8);
+  background: rgba(74,222,128,0.08);
+}
+
+.keychain-upload-modal__footer {
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+  padding: 12px 18px;
+  border-top: 1px dashed rgba(0,0,0,0.08);
+}
+
+/* Snap highlight pulse */
+@keyframes pulse-ring {
+  0%  { opacity: 1; transform: scale(1);   }
+  50% { opacity: 0.5; transform: scale(1.08); }
+  100%{ opacity: 1; transform: scale(1);   }
+}
+
 /* ── Receipt editor modal ──────────────────────────────────────── */
 .modal-backdrop {
   position: fixed;

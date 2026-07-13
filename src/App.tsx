@@ -3,7 +3,7 @@ import { createClient } from '@supabase/supabase-js';
 import {
   Check, Circle, Trash2, ChevronRight, Plus,
   StickyNote, Image, Film, RotateCw, Undo2, Redo2, Upload, Maximize2,
-  Receipt, FileText, X,
+  Receipt, FileText, X, Link,
 } from 'lucide-react';
 
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL || 'https://0ec90b57d6e95fcbda19832f.supabase.co';
@@ -58,6 +58,14 @@ interface PaperData {
 }
 
 type BoardState = { notes: NoteData[]; frames: PhotoFrameData[]; receipts: ReceiptData[]; papers: PaperData[] };
+
+interface KeyringData {
+  id: string; left: number; top: number; color: string; locked: boolean;
+}
+
+interface KeychainData {
+  id: string; left: number; top: number; imageUrl: string; attachedRingId: string | null;
+}
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -230,6 +238,14 @@ async function syncPaper(p: PaperData) {
     has_pin: p.hasPin, has_tape: p.hasTape,
     pin_color: p.pinColor, tape_color: p.tapeColor, tape_image: p.tapeImage,
   });
+}
+
+async function syncKeyring(k: KeyringData) {
+  await supabase.from('keyrings').upsert({ id:k.id, x:k.left, y:k.top, color:k.color, locked:k.locked });
+}
+
+async function syncKeychain(k: KeychainData) {
+  await supabase.from('keychains').upsert({ id:k.id, x:k.left, y:k.top, image_url:k.imageUrl, attached_ring_id:k.attachedRingId });
 }
 
 // ─── PinSvg ───────────────────────────────────────────────────────────────────
@@ -1342,7 +1358,7 @@ function PaperContextMenu({ paper, x, y, onPatch, onRemove, onDuplicate, onEdit 
 
 // ─── Add menu ─────────────────────────────────────────────────────────────────
 
-type AddType = 'note'|'polaroid1'|'polaroid2'|'photostrip'|'film'|'receipt'|'paper';
+type AddType = 'note'|'polaroid1'|'polaroid2'|'photostrip'|'film'|'receipt'|'paper'|'keychain';
 
 function AddMenu({ onAdd }: { onAdd: (t: AddType) => void }) {
   const [open, setOpen] = useState(false);
@@ -1360,6 +1376,7 @@ function AddMenu({ onAdd }: { onAdd: (t: AddType) => void }) {
     ['film',      'photo film',     <Film size={16}/>],
     ['receipt',   'receipt',        <Receipt size={16}/>],
     ['paper',     'sheet of paper', <FileText size={16}/>],
+    ['keychain',  'add keychain',   <Link size={16}/>],
   ];
   return (
     <div style={{ position:'fixed', top:10, right:10, zIndex:200 }}>
@@ -1381,21 +1398,241 @@ function AddMenu({ onAdd }: { onAdd: (t: AddType) => void }) {
 
 // ─── Board ────────────────────────────────────────────────────────────────────
 
+// ─── Keyring + Keychain ────────────────────────────────────────────────────────
+
+const RING_COLORS = ['#4ade80','#f9a8d4','#93c5fd','#fcd34d','#c4b5fd','#fb923c'];
+const SNAP_RADIUS = 70; // px — how close the hook needs to be to snap
+
+interface KeyringCtxProps { ring: KeyringData; x:number; y:number; onPatch:(id:string,p:Partial<KeyringData>)=>void; onRemove:(id:string)=>void; }
+function KeyringContextMenu({ ring, x, y, onPatch, onRemove }: KeyringCtxProps) {
+  const left = Math.min(x, window.innerWidth - 210);
+  const top  = Math.min(y, window.innerHeight - 240);
+  return (
+    <div className="ctx-menu" style={{ left, top }} onClick={e=>e.stopPropagation()}>
+      <CtxRow label={ring.locked ? 'unlock position' : 'lock position'}
+        onClick={() => onPatch(ring.id, { locked: !ring.locked })} />
+      <CtxRow label="change color" submenu={
+        <div className="ctx-submenu ctx-submenu--swatches">
+          {RING_COLORS.map(c => (
+            <button key={c} className={`ctx-swatch-btn${ring.color===c?' ctx-swatch-btn--active':''}`}
+              onClick={() => onPatch(ring.id, { color:c })}>
+              <div style={{ width:28, height:28, borderRadius:'50%', background:c, border:'1.5px solid rgba(0,0,0,0.15)' }} />
+            </button>
+          ))}
+        </div>
+      } />
+      <CtxRow label="delete" danger onClick={() => onRemove(ring.id)} />
+    </div>
+  );
+}
+
+function KeyringItem({ data, onContextMenu, onChange }: {
+  data: KeyringData;
+  onContextMenu: (e:React.MouseEvent) => void;
+  onChange: (id:string, left:number, top:number) => void;
+}) {
+  const dragRef = useRef({ sX:0,sY:0,oL:0,oT:0 });
+
+  const handleMD = (e: React.MouseEvent) => {
+    if (data.locked) return;
+    e.preventDefault(); e.stopPropagation();
+    dragRef.current = { sX:e.clientX, sY:e.clientY, oL:data.left, oT:data.top };
+    const el = document.getElementById('ring-'+data.id)!;
+    const move = (mv:MouseEvent) => { el.style.left=dragRef.current.oL+(mv.clientX-dragRef.current.sX)+'px'; el.style.top=dragRef.current.oT+(mv.clientY-dragRef.current.sY)+'px'; };
+    const up = (uv:MouseEvent) => { window.removeEventListener('mousemove',move); window.removeEventListener('mouseup',up); onChange(data.id, dragRef.current.oL+(uv.clientX-dragRef.current.sX), dragRef.current.oT+(uv.clientY-dragRef.current.sY)); };
+    window.addEventListener('mousemove',move); window.addEventListener('mouseup',up);
+  };
+
+  return (
+    <div id={'ring-'+data.id} onContextMenu={onContextMenu} onMouseDown={handleMD}
+      style={{ position:'absolute', left:data.left, top:data.top, width:56, height:56,
+        cursor:data.locked?'context-menu':'grab', userSelect:'none', zIndex:30,
+        filter:`drop-shadow(1px 2px 4px rgba(0,0,0,0.3)) hue-rotate(${ringHueShift(data.color)}deg) saturate(1.2)`,
+      }}>
+      <img src="/green.svg" alt="" style={{ width:56, height:56, display:'block', pointerEvents:'none' }} />
+      {data.locked && (
+        <div style={{ position:'absolute', bottom:-14, left:'50%', transform:'translateX(-50%)', fontSize:9, color:'rgba(0,0,0,0.35)', whiteSpace:'nowrap', pointerEvents:'none' }}>locked</div>
+      )}
+    </div>
+  );
+}
+
+function ringHueShift(color: string): number {
+  // green.svg is green — shift hue to approximate the desired color
+  const map: Record<string, number> = {
+    '#4ade80': 0,      // green (base)
+    '#f9a8d4': -120,   // pink
+    '#93c5fd': -175,   // blue
+    '#fcd34d': 60,     // yellow
+    '#c4b5fd': -145,   // purple
+    '#fb923c': 80,     // orange
+  };
+  return map[color] ?? 0;
+}
+
+// ─── Upload helper ─────────────────────────────────────────────────────────────
+function readFileAsDataURL(file: File): Promise<string> {
+  return new Promise((res, rej) => {
+    const r = new FileReader();
+    r.onload = () => res(r.result as string);
+    r.onerror = rej;
+    r.readAsDataURL(file);
+  });
+}
+
+// ─── Keychain upload prompt ─────────────────────────────────────────────────────
+function KeychainUploadPrompt({ onUpload, onCancel }: { onUpload:(url:string)=>void; onCancel:()=>void }) {
+  const fileRef = useRef<HTMLInputElement>(null);
+  const [preview, setPreview] = useState<string|null>(null);
+
+  const handleFile = async (file: File) => {
+    const url = await readFileAsDataURL(file);
+    setPreview(url);
+  };
+
+  return (
+    <div className="modal-backdrop" onClick={onCancel}>
+      <div className="keychain-upload-modal" onClick={e=>e.stopPropagation()}>
+        <div className="keychain-upload-modal__header">
+          <span>hang your charm</span>
+          <button onClick={onCancel}><X size={15}/></button>
+        </div>
+        <p className="keychain-upload-modal__hint">Upload an image to create your keychain charm. It will attach below the hook.</p>
+        <div className="keychain-upload-modal__drop"
+          onClick={() => fileRef.current?.click()}
+          onDragOver={e=>e.preventDefault()}
+          onDrop={e=>{ e.preventDefault(); const f=e.dataTransfer.files[0]; if(f) handleFile(f); }}>
+          {preview ? (
+            <img src={preview} alt="preview" style={{ maxWidth:120, maxHeight:120, borderRadius:8, objectFit:'contain' }} />
+          ) : (
+            <div style={{ display:'flex', flexDirection:'column', alignItems:'center', gap:8, color:'#888' }}>
+              <Upload size={28} />
+              <span style={{ fontSize:13 }}>click or drag your image here</span>
+            </div>
+          )}
+        </div>
+        <input ref={fileRef} type="file" accept="image/*" style={{ display:'none' }}
+          onChange={async e=>{ const f=e.target.files?.[0]; if(f) handleFile(f); }} />
+        <div className="keychain-upload-modal__footer">
+          <button className="paper-editor__cancel" onClick={onCancel}>cancel</button>
+          <button className="paper-editor__done" disabled={!preview} onClick={() => preview && onUpload(preview)}>attach charm</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+interface KeychainCtxProps { chain:KeychainData; x:number; y:number; onChangeImage:()=>void; onDetach:()=>void; onUnlockMove:()=>void; onRemove:(id:string)=>void; }
+function KeychainContextMenu({ chain, x, y, onChangeImage, onDetach, onRemove }: KeychainCtxProps) {
+  const left = Math.min(x, window.innerWidth - 210);
+  const top  = Math.min(y, window.innerHeight - 200);
+  return (
+    <div className="ctx-menu" style={{ left, top }} onClick={e=>e.stopPropagation()}>
+      <CtxRow label="change image" onClick={onChangeImage} />
+      {chain.attachedRingId && <CtxRow label="detach from ring" onClick={onDetach} />}
+      <CtxRow label="delete" danger onClick={() => onRemove(chain.id)} />
+    </div>
+  );
+}
+
+function KeychainItem({ data, rings, onContextMenu, onDragEnd, onAttach, onDetach }: {
+  data: KeychainData;
+  rings: KeyringData[];
+  onContextMenu: (e:React.MouseEvent) => void;
+  onDragEnd: (id:string, left:number, top:number, snapRingId:string|null) => void;
+  onAttach: (chainId:string, ringId:string) => void;
+  onDetach: (chainId:string) => void;
+}) {
+  const dragRef = useRef({ sX:0,sY:0,oL:0,oT:0 });
+  const [snapHighlight, setSnapHighlight] = useState<string|null>(null);
+
+  const attachedRing = rings.find(r => r.id === data.attachedRingId);
+
+  // Position: if attached, hang below the ring's center
+  const displayLeft = attachedRing ? attachedRing.left - 4 : data.left;
+  const displayTop  = attachedRing ? attachedRing.top + 36 : data.top;
+
+  const handleMD = (e: React.MouseEvent) => {
+    e.preventDefault(); e.stopPropagation();
+    // If attached, detach first so user can drag freely
+    if (data.attachedRingId) onDetach(data.id);
+
+    dragRef.current = { sX:e.clientX, sY:e.clientY, oL:displayLeft, oT:displayTop };
+    const el = document.getElementById('chain-'+data.id)!;
+
+    const move = (mv:MouseEvent) => {
+      const nl = dragRef.current.oL+(mv.clientX-dragRef.current.sX);
+      const nt = dragRef.current.oT+(mv.clientY-dragRef.current.sY);
+      el.style.left=nl+'px'; el.style.top=nt+'px';
+      // Check snap proximity — use top-center of hook as attach point
+      const hookX = nl + 24; const hookY = nt + 8;
+      const near = rings.find(r => Math.hypot((r.left+28)-hookX, (r.top+28)-hookY) < SNAP_RADIUS);
+      setSnapHighlight(near?.id ?? null);
+    };
+    const up = (uv:MouseEvent) => {
+      window.removeEventListener('mousemove',move); window.removeEventListener('mouseup',up);
+      const nl = dragRef.current.oL+(uv.clientX-dragRef.current.sX);
+      const nt = dragRef.current.oT+(uv.clientY-dragRef.current.sY);
+      const hookX = nl + 24; const hookY = nt + 8;
+      const near = rings.find(r => Math.hypot((r.left+28)-hookX, (r.top+28)-hookY) < SNAP_RADIUS);
+      setSnapHighlight(null);
+      if (near) { onAttach(data.id, near.id); }
+      else onDragEnd(data.id, nl, nt, null);
+    };
+    window.addEventListener('mousemove',move); window.addEventListener('mouseup',up);
+  };
+
+  return (
+    <>
+      {/* Snap highlight ring */}
+      {snapHighlight && rings.filter(r=>r.id===snapHighlight).map(r => (
+        <div key={r.id} style={{ position:'absolute', left:r.left-8, top:r.top-8, width:72, height:72,
+          borderRadius:'50%', border:'2px dashed rgba(74,222,128,0.8)',
+          pointerEvents:'none', zIndex:28, animation:'pulse-ring 0.6s ease infinite' }} />
+      ))}
+      <div id={'chain-'+data.id} onContextMenu={onContextMenu} onMouseDown={handleMD}
+        style={{ position:'absolute', left:displayLeft, top:displayTop,
+          cursor:'grab', userSelect:'none', zIndex:data.attachedRingId?25:35,
+          display:'flex', flexDirection:'column', alignItems:'center',
+          filter:'drop-shadow(1px 3px 6px rgba(0,0,0,0.35))',
+        }}>
+        {/* Hook — sits above charm, rendered BELOW green ring via z-index */}
+        <img src="/hookything.svg" alt="" style={{ width:48, height:48, display:'block', pointerEvents:'none', position:'relative', zIndex:24 }} />
+        {/* Charm image */}
+        {data.imageUrl && (
+          <div style={{ width:80, height:80, borderRadius:'50%', overflow:'hidden',
+            border:'3px solid rgba(255,255,255,0.9)', boxShadow:'0 3px 10px rgba(0,0,0,0.3)',
+            marginTop:-6, background:'#fff', flexShrink:0,
+          }}>
+            <img src={data.imageUrl} alt="charm" style={{ width:'100%', height:'100%', objectFit:'cover', pointerEvents:'none' }} />
+          </div>
+        )}
+      </div>
+    </>
+  );
+}
+
 export default function Board() {
   const [notes,    setNotes]    = useState<NoteData[]>([]);
   const [frames,   setFrames]   = useState<PhotoFrameData[]>([]);
   const [receipts, setReceipts] = useState<ReceiptData[]>([]);
   const [papers,   setPapers]   = useState<PaperData[]>([]);
+  const [keyrings,   setKeyrings]   = useState<KeyringData[]>([]);
+  const [keychains,  setKeychains]  = useState<KeychainData[]>([]);
 
   const [selectedId, setSelectedId] = useState<string|null>(null);
   const [noteCtx,    setNoteCtx]    = useState<{v:boolean;x:number;y:number;id:string|null}>({v:false,x:0,y:0,id:null});
   const [frameCtx,   setFrameCtx]   = useState<{v:boolean;x:number;y:number;id:string|null}>({v:false,x:0,y:0,id:null});
   const [receiptCtx, setReceiptCtx] = useState<{v:boolean;x:number;y:number;id:string|null}>({v:false,x:0,y:0,id:null});
   const [paperCtx,   setPaperCtx]   = useState<{v:boolean;x:number;y:number;id:string|null}>({v:false,x:0,y:0,id:null});
+  const [ringCtx,    setRingCtx]    = useState<{v:boolean;x:number;y:number;id:string|null}>({v:false,x:0,y:0,id:null});
+  const [chainCtx,   setChainCtx]   = useState<{v:boolean;x:number;y:number;id:string|null}>({v:false,x:0,y:0,id:null});
 
   const [editCapId,      setEditCapId]      = useState<string|null>(null);
   const [editReceiptId,  setEditReceiptId]  = useState<string|null>(null);
   const [editPaperId,    setEditPaperId]    = useState<string|null>(null);
+  const [uploadChainId,  setUploadChainId]  = useState<string|null>(null);
+  const [pendingUploadChainId, setPendingUploadChainId] = useState<string|null>(null);
 
   const [canUndo, setCanUndo] = useState(false);
   const [canRedo, setCanRedo] = useState(false);
@@ -1505,6 +1742,13 @@ export default function Board() {
       }
       trySetHistory();
     });
+
+    supabase.from('keyrings').select('*').order('created_at').then(({ data }) => {
+      if (data) setKeyrings(data.map(r => ({ id:r.id, left:r.x, top:r.y, color:r.color??'#4ade80', locked:r.locked??true })));
+    });
+    supabase.from('keychains').select('*').order('created_at').then(({ data }) => {
+      if (data) setKeychains(data.map(c => ({ id:c.id, left:c.x, top:c.y, imageUrl:c.image_url??'', attachedRingId:c.attached_ring_id??null })));
+    });
   }, []);
 
   // Dismiss menus on outside click
@@ -1548,6 +1792,21 @@ export default function Board() {
       const updated = [...papers, p];
       pushHistory(notes, frames, receipts, updated); setPapers(updated); syncPaper(p);
       setEditPaperId(p.id);
+    } else if (type === 'keychain') {
+      // Place the green ring on screen and prompt user to upload charm image
+      const ring: KeyringData = {
+        id: crypto.randomUUID(),
+        left: rand(80, window.innerWidth - 180),
+        top: rand(80, window.innerHeight - 200),
+        color: '#4ade80', locked: true,
+      };
+      setKeyrings(prev => [...prev, ring]);
+      syncKeyring(ring);
+      // Add a keychain body without image yet — will be filled by upload prompt
+      const chain: KeychainData = { id: crypto.randomUUID(), left: ring.left - 4, top: ring.top + 36, imageUrl: '', attachedRingId: ring.id };
+      setKeychains(prev => [...prev, chain]);
+      syncKeychain(chain);
+      setPendingUploadChainId(chain.id);
     } else {
       const isStrip = type==='photostrip' || type==='film';
       const dims = type==='film' ? getFilmConfig(3).dims : isStrip ? getStripConfig(3).dims : type==='polaroid1' ? P1_DIMS : P2_DIMS;
@@ -1770,17 +2029,75 @@ export default function Board() {
     const p = updated.find(p=>p.id===paperId); if (p) syncPaper(p);
   };
 
+  // ── Keyring handlers ──
+  const patchKeyring = (id: string, patch: Partial<KeyringData>) => {
+    const updated = keyrings.map(r => r.id===id ? {...r,...patch} : r);
+    setKeyrings(updated);
+    const r = updated.find(r=>r.id===id); if (r) syncKeyring(r);
+    setRingCtx(m=>({...m,v:false}));
+  };
+  const removeKeyring = (id: string) => {
+    setKeyrings(prev => prev.filter(r=>r.id!==id));
+    setKeychains(prev => prev.map(c => c.attachedRingId===id ? {...c,attachedRingId:null} : c));
+    supabase.from('keyrings').delete().eq('id',id);
+    setRingCtx(m=>({...m,v:false}));
+  };
+  const moveKeyring = (id: string, left: number, top: number) => {
+    const updated = keyrings.map(r => r.id===id ? {...r,left,top} : r);
+    setKeyrings(updated);
+    const r = updated.find(r=>r.id===id); if (r) syncKeyring(r);
+  };
+
+  // ── Keychain handlers ──
+  const removeKeychain = (id: string) => {
+    setKeychains(prev => prev.filter(c=>c.id!==id));
+    supabase.from('keychains').delete().eq('id',id);
+    setChainCtx(m=>({...m,v:false}));
+  };
+  const chainDragEnd = (id: string, left: number, top: number, snapRingId: string|null) => {
+    const updated = keychains.map(c => c.id===id ? {...c,left,top,attachedRingId:snapRingId} : c);
+    setKeychains(updated);
+    const c = updated.find(c=>c.id===id); if (c) syncKeychain(c);
+  };
+  const attachChain = (chainId: string, ringId: string) => {
+    const updated = keychains.map(c => c.id===chainId ? {...c,attachedRingId:ringId} : c);
+    setKeychains(updated);
+    const c = updated.find(c=>c.id===chainId); if (c) syncKeychain(c);
+  };
+  const detachChain = (chainId: string) => {
+    const c = keychains.find(c=>c.id===chainId);
+    if (!c) return;
+    const ring = keyrings.find(r=>r.id===c.attachedRingId);
+    const freePos = ring ? { left: ring.left - 4, top: ring.top + 120 } : {};
+    const updated = keychains.map(ch => ch.id===chainId ? {...ch, attachedRingId:null, ...freePos} : ch);
+    setKeychains(updated);
+    const upd = updated.find(c=>c.id===chainId); if (upd) syncKeychain(upd);
+  };
+  const updateChainImage = (chainId: string, imageUrl: string) => {
+    const updated = keychains.map(c => c.id===chainId ? {...c,imageUrl} : c);
+    setKeychains(updated);
+    const c = updated.find(c=>c.id===chainId); if (c) syncKeychain(c);
+    setUploadChainId(null); setPendingUploadChainId(null);
+    setChainCtx(m=>({...m,v:false}));
+  };
+
   const activeNote    = noteCtx.id    ? notes.find(n=>n.id===noteCtx.id)       : null;
   const activeFrame   = frameCtx.id   ? frames.find(f=>f.id===frameCtx.id)     : null;
   const activeReceipt = receiptCtx.id ? receipts.find(r=>r.id===receiptCtx.id) : null;
   const activePaper   = paperCtx.id   ? papers.find(p=>p.id===paperCtx.id)     : null;
+  const activeRing    = ringCtx.id    ? keyrings.find(r=>r.id===ringCtx.id)    : null;
+  const activeChain   = chainCtx.id   ? keychains.find(c=>c.id===chainCtx.id)  : null;
   const editingReceipt = editReceiptId ? receipts.find(r=>r.id===editReceiptId) : null;
+
+  // pending chain = the keychain waiting for image upload
+  const pendingChain = pendingUploadChainId ? keychains.find(c=>c.id===pendingUploadChainId) : null;
+  const uploadChain  = uploadChainId ? keychains.find(c=>c.id===uploadChainId) : null;
 
   return (
     <div className="board"
       style={{ width:'100%', height:'100%', position:'relative', overflow:'hidden',
         background:"url('/cork.jpeg') no-repeat center center fixed", backgroundSize:'cover' }}
-      onClick={() => setSelectedId(null)}>
+      onClick={() => { setSelectedId(null); setRingCtx(m=>({...m,v:false})); setChainCtx(m=>({...m,v:false})); }}>
 
       {notes.map(n => (
         <Note key={n.id} data={n} isSelected={selectedId===n.id}
@@ -1821,6 +2138,20 @@ export default function Board() {
           onEndEdit={() => setEditPaperId(null)} />
       ))}
 
+      {/* Keychain bodies — rendered BELOW the rings in z-order (z-index 25) */}
+      {keychains.map(c => (
+        <KeychainItem key={c.id} data={c} rings={keyrings}
+          onContextMenu={e => { e.preventDefault(); e.stopPropagation(); setChainCtx({v:true,x:e.clientX,y:e.clientY,id:c.id}); }}
+          onDragEnd={chainDragEnd} onAttach={attachChain} onDetach={detachChain} />
+      ))}
+
+      {/* Green rings — rendered ABOVE the hook portion (z-index 30) */}
+      {keyrings.map(r => (
+        <KeyringItem key={r.id} data={r}
+          onContextMenu={e => { e.preventDefault(); e.stopPropagation(); setRingCtx({v:true,x:e.clientX,y:e.clientY,id:r.id}); }}
+          onChange={moveKeyring} />
+      ))}
+
       {/* Toolbar */}
       <div style={{ position:'fixed', top:10, left:10, zIndex:200, display:'flex', gap:6 }}>
         <button className="toolbar-btn" onClick={undo} disabled={!canUndo} title="Undo (Ctrl+Z)"><Undo2 size={16}/></button>
@@ -1849,10 +2180,37 @@ export default function Board() {
           onPatch={patchPaper} onRemove={removePaper} onDuplicate={duplicatePaper}
           onEdit={id => { setEditPaperId(id); setPaperCtx(m=>({...m,v:false})); }} />
       )}
+      {ringCtx.v && activeRing && (
+        <KeyringContextMenu ring={activeRing} x={ringCtx.x} y={ringCtx.y}
+          onPatch={patchKeyring} onRemove={removeKeyring} />
+      )}
+      {chainCtx.v && activeChain && (
+        <KeychainContextMenu chain={activeChain} x={chainCtx.x} y={chainCtx.y}
+          onChangeImage={() => { setUploadChainId(activeChain.id); setChainCtx(m=>({...m,v:false})); }}
+          onDetach={() => { detachChain(activeChain.id); setChainCtx(m=>({...m,v:false})); }}
+          onUnlockMove={() => setChainCtx(m=>({...m,v:false}))}
+          onRemove={removeKeychain} />
+      )}
 
       {/* Receipt editor modal */}
       {editingReceipt && (
         <ReceiptEditor receipt={editingReceipt} onSave={saveReceiptEdit} onClose={() => setEditReceiptId(null)} />
+      )}
+
+      {/* Keychain upload prompt — shown when a new keychain is placed */}
+      {(pendingChain || uploadChain) && (
+        <KeychainUploadPrompt
+          onUpload={url => updateChainImage((pendingChain || uploadChain)!.id, url)}
+          onCancel={() => {
+            if (pendingChain) {
+              // Remove the ring + chain if upload is cancelled before first image
+              removeKeychain(pendingChain.id);
+              const chainRingId = pendingChain.attachedRingId;
+              if (chainRingId) { setKeyrings(prev=>prev.filter(r=>r.id!==chainRingId)); supabase.from('keyrings').delete().eq('id',chainRingId); }
+            }
+            setUploadChainId(null); setPendingUploadChainId(null);
+          }}
+        />
       )}
     </div>
   );
