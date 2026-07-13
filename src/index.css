@@ -586,23 +586,88 @@ div[id^="frame-"]:hover .frame-remove-btn {
 
 /* ── Paper card ────────────────────────────────────────────────── */
 .paper-card {
-  background-color: #fefde6;
-  background-image: linear-gradient(rgba(0, 0, 180, 0.08) 1px, transparent 1px);
   box-shadow: 2px 2px 10px rgba(0,0,0,0.22), 0 0 0 1px rgba(0,0,0,0.06);
   border-radius: 2px;
   position: relative;
   font-family: 'Waiting for the Sunrise', cursive;
 }
 
+/* Legal pad: yellow left border stripe */
+.paper-type--legal {
+  border-left: 4px solid rgba(253, 200, 48, 0.7);
+  padding-left: 22px !important;
+}
+.paper-type--legal::before {
+  content: '';
+  position: absolute;
+  left: 26px;
+  top: 0;
+  bottom: 0;
+  width: 1px;
+  background: rgba(253,100,48,0.25);
+  pointer-events: none;
+}
+
+/* Ring binder: circles on left */
+.paper-type--ring {
+  padding-left: 40px !important;
+}
+.paper-type--ring::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 36px;
+  background: repeating-linear-gradient(
+    to bottom,
+    transparent 0px,
+    transparent 28px,
+    rgba(0,0,0,0.08) 28px,
+    rgba(0,0,0,0.08) 30px,
+    transparent 30px,
+    transparent 44px
+  );
+  border-right: 2px solid rgba(0,0,0,0.1);
+  pointer-events: none;
+}
+
+/* Notepad: top spiral line */
+.paper-type--notepad::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 6px;
+  background: repeating-linear-gradient(
+    90deg,
+    transparent 0px,
+    transparent 8px,
+    rgba(0,0,0,0.18) 8px,
+    rgba(0,0,0,0.18) 16px
+  );
+  pointer-events: none;
+}
+
+/* Ancient manuscript: aged parchment feel (applied via bgStyle, just add extras) */
+
 /* ── Paper editor ──────────────────────────────────────────────── */
 .paper-editor {
   display: flex;
   flex-direction: column;
-  height: 100%;
   gap: 0;
 }
 
+.paper-editor__title-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+
 .paper-editor__title {
+  flex: 1;
   font-family: 'Waiting for the Sunrise', cursive;
   font-size: 1.45rem;
   font-weight: bold;
@@ -610,11 +675,42 @@ div[id^="frame-"]:hover .frame-remove-btn {
   background: transparent;
   border: none;
   outline: none;
-  width: 100%;
-  padding: 0 0 4px 0;
+  padding: 0 0 3px 0;
   border-bottom: 2px solid rgba(252, 139, 147, 0.6);
-  margin-bottom: 6px;
+  min-width: 0;
 }
+
+.paper-editor__title-actions {
+  display: flex;
+  gap: 4px;
+  flex-shrink: 0;
+}
+
+.paper-editor__done {
+  background: #5a6e3a;
+  color: #fff;
+  border: none;
+  border-radius: 6px;
+  padding: 3px 10px;
+  font-size: 12px;
+  font-family: 'Shadows Into Light', Arial;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background 0.15s;
+}
+.paper-editor__done:hover { background: #4a5c2e; }
+
+.paper-editor__cancel {
+  background: none;
+  border: 1px solid rgba(0,0,0,0.2);
+  border-radius: 6px;
+  padding: 3px 8px;
+  font-size: 13px;
+  color: #888;
+  cursor: pointer;
+  transition: background 0.1s;
+}
+.paper-editor__cancel:hover { background: rgba(0,0,0,0.06); }
 
 .paper-editor__divider {
   height: 1.5px;
@@ -624,35 +720,10 @@ div[id^="frame-"]:hover .frame-remove-btn {
 }
 
 .paper-editor__body {
-  flex: 1;
-  overflow-y: auto;
   display: flex;
   flex-direction: column;
   gap: 1px;
 }
-
-.paper-editor__footer {
-  display: flex;
-  gap: 6px;
-  padding-top: 8px;
-  border-top: 1px dashed rgba(0,0,0,0.1);
-  margin-top: 6px;
-}
-
-.paper-editor__add-line {
-  background: none;
-  border: 1px dashed rgba(0,0,0,0.2);
-  border-radius: 4px;
-  padding: 3px 10px;
-  font-family: 'Waiting for the Sunrise', cursive;
-  font-size: 1rem;
-  color: #888;
-  cursor: pointer;
-  margin-top: 4px;
-  align-self: flex-start;
-  transition: border-color 0.15s, color 0.15s;
-}
-.paper-editor__add-line:hover { border-color: #555; color: #333; }
 
 /* ── Paper lines ───────────────────────────────────────────────── */
 .paper-line {
@@ -729,6 +800,7 @@ div[id^="frame-"]:hover .frame-remove-btn {
   line-height: 1.5;
   padding: 2px 0;
   width: 100%;
+  min-width: 0;
 }
 
 .paper-line__input--done {
@@ -747,6 +819,7 @@ div[id^="frame-"]:hover .frame-remove-btn {
   font-size: 1.1rem;
   color: #37353f;
   line-height: 1.5;
+  word-break: break-word;
 }
 
 /* Custom checkbox */
@@ -765,7 +838,6 @@ div[id^="frame-"]:hover .frame-remove-btn {
   align-items: center;
   justify-content: center;
 }
-.paper-cb--view { cursor: default; }
 
 .paper-cb--checked {
   background: rgba(205, 220, 57, 0.8);
@@ -783,7 +855,6 @@ div[id^="frame-"]:hover .frame-remove-btn {
 
 /* Paper display */
 .paper-display {
-  height: 100%;
   overflow: hidden;
 }
 
@@ -793,6 +864,7 @@ div[id^="frame-"]:hover .frame-remove-btn {
   font-weight: bold;
   color: #37353f;
   margin-bottom: 6px;
+  word-break: break-word;
 }
 
 .paper-display__lines {
@@ -807,6 +879,8 @@ div[id^="frame-"]:hover .frame-remove-btn {
   font-size: 0.85rem;
   font-family: 'Waiting for the Sunrise', cursive;
 }
+
+/* ── Paper resize corner ──────────────────────────────────────── */
 
 .paper-resize-corner {
   position: absolute;
@@ -829,6 +903,79 @@ div[id^="frame-"]:hover .frame-remove-btn {
   height: 7px;
   border-right: 2px solid rgba(0,0,0,0.5);
   border-bottom: 2px solid rgba(0,0,0,0.5);
+}
+
+/* ── Swatch grid in ctx menus ─────────────────────────────────── */
+.ctx-submenu--swatches {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  padding: 7px !important;
+  width: 144px;
+}
+
+.ctx-swatch-btn {
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 2px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: transform 0.12s;
+}
+.ctx-swatch-btn:hover { transform: scale(1.18); }
+.ctx-swatch-btn--active { outline: 2.5px solid #444; outline-offset: 2px; border-radius: 50%; }
+
+.ctx-submenu--nested {
+  min-width: 140px;
+  padding: 4px 0 !important;
+}
+
+/* ── Note key popup ───────────────────────────────────────────── */
+.paper-key-popup {
+  background: #fefde6;
+  border-radius: 10px;
+  padding: 0;
+  width: 320px;
+  box-shadow: 0 12px 40px rgba(0,0,0,0.3);
+  font-family: 'Waiting for the Sunrise', cursive;
+  overflow: hidden;
+}
+
+.paper-key-popup__header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 12px 16px;
+  background: rgba(252,139,147,0.2);
+  border-bottom: 1px dashed rgba(252,139,147,0.5);
+  font-size: 1.1rem;
+  font-weight: 700;
+  color: #37353f;
+}
+
+.paper-key-popup__header button {
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: #888;
+  display: flex;
+  padding: 2px;
+  border-radius: 4px;
+}
+.paper-key-popup__header button:hover { background: rgba(0,0,0,0.08); }
+
+.paper-key-popup__body {
+  padding: 14px 18px;
+  font-family: 'Waiting for the Sunrise', cursive;
+  font-size: 1.05rem;
+  color: #37353f;
+  line-height: 1.8;
+  white-space: pre-wrap;
+  margin: 0;
+  background: transparent;
 }
 
 /* ── Receipt editor modal ──────────────────────────────────────── */
