@@ -65,6 +65,7 @@ interface KeyringData {
 
 interface KeychainData {
   id: string; left: number; top: number; imageUrl: string; attachedRingId: string | null;
+  imgOffsetX: number; imgOffsetY: number;
 }
 
 // ─── Constants ────────────────────────────────────────────────────────────────
@@ -245,7 +246,7 @@ async function syncKeyring(k: KeyringData) {
 }
 
 async function syncKeychain(k: KeychainData) {
-  await supabase.from('keychains').upsert({ id:k.id, x:k.left, y:k.top, image_url:k.imageUrl, attached_ring_id:k.attachedRingId });
+  await supabase.from('keychains').upsert({ id:k.id, x:k.left, y:k.top, image_url:k.imageUrl, attached_ring_id:k.attachedRingId, img_offset_x:k.imgOffsetX, img_offset_y:k.imgOffsetY });
 }
 
 // ─── PinSvg ───────────────────────────────────────────────────────────────────
@@ -1480,42 +1481,91 @@ function readFileAsDataURL(file: File): Promise<string> {
   });
 }
 
-// ─── Keychain upload prompt ─────────────────────────────────────────────────────
-function KeychainUploadPrompt({ onUpload, onCancel }: { onUpload:(url:string)=>void; onCancel:()=>void }) {
+// ─── Keychain upload prompt ─────────────────────────────────────────────────
+function KeychainUploadPrompt({ onUpload, onCancel }: {
+  onUpload: (url: string, offsetX: number, offsetY: number) => void;
+  onCancel: () => void;
+}) {
   const fileRef = useRef<HTMLInputElement>(null);
-  const [preview, setPreview] = useState<string|null>(null);
+  const [preview, setPreview] = useState<string | null>(null);
+  const [offset, setOffset] = useState({ x: 0, y: 0 });
+  const panRef = useRef({ sX: 0, sY: 0, oX: 0, oY: 0 });
 
   const handleFile = async (file: File) => {
     const url = await readFileAsDataURL(file);
     setPreview(url);
+    setOffset({ x: 0, y: 0 });
   };
+
+  const handlePanMD = (e: React.MouseEvent) => {
+    if (!preview) return;
+    e.preventDefault();
+    panRef.current = { sX: e.clientX, sY: e.clientY, oX: offset.x, oY: offset.y };
+    const move = (mv: MouseEvent) => {
+      setOffset({ x: panRef.current.oX + (mv.clientX - panRef.current.sX), y: panRef.current.oY + (mv.clientY - panRef.current.sY) });
+    };
+    const up = () => { window.removeEventListener('mousemove', move); window.removeEventListener('mouseup', up); };
+    window.addEventListener('mousemove', move);
+    window.addEventListener('mouseup', up);
+  };
+
+  // Preview: 120px circle showing the charm as it will appear on the board
+  const PREVIEW_SIZE = 120;
 
   return (
     <div className="modal-backdrop" onClick={onCancel}>
-      <div className="keychain-upload-modal" onClick={e=>e.stopPropagation()}>
+      <div className="keychain-upload-modal" onClick={e => e.stopPropagation()}>
         <div className="keychain-upload-modal__header">
           <span>hang your charm</span>
-          <button onClick={onCancel}><X size={15}/></button>
+          <button onClick={onCancel}><X size={15} /></button>
         </div>
-        <p className="keychain-upload-modal__hint">Upload an image to create your keychain charm. It will attach below the hook.</p>
-        <div className="keychain-upload-modal__drop"
-          onClick={() => fileRef.current?.click()}
-          onDragOver={e=>e.preventDefault()}
-          onDrop={e=>{ e.preventDefault(); const f=e.dataTransfer.files[0]; if(f) handleFile(f); }}>
-          {preview ? (
-            <img src={preview} alt="preview" style={{ maxWidth:120, maxHeight:120, borderRadius:8, objectFit:'contain' }} />
-          ) : (
-            <div style={{ display:'flex', flexDirection:'column', alignItems:'center', gap:8, color:'#888' }}>
+        <p className="keychain-upload-modal__hint">
+          Upload your design. Drag the image below to reposition it.
+        </p>
+
+        {!preview ? (
+          <div className="keychain-upload-modal__drop"
+            onClick={() => fileRef.current?.click()}
+            onDragOver={e => e.preventDefault()}
+            onDrop={e => { e.preventDefault(); const f = e.dataTransfer.files[0]; if (f) handleFile(f); }}>
+            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8, color: '#888' }}>
               <Upload size={28} />
-              <span style={{ fontSize:13 }}>click or drag your image here</span>
+              <span style={{ fontSize: 13 }}>click or drag your image here</span>
             </div>
-          )}
-        </div>
-        <input ref={fileRef} type="file" accept="image/*" style={{ display:'none' }}
-          onChange={async e=>{ const f=e.target.files?.[0]; if(f) handleFile(f); }} />
+          </div>
+        ) : (
+          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 12, padding: '12px 0 8px' }}>
+            {/* Draggable preview window */}
+            <div style={{ position: 'relative', width: PREVIEW_SIZE, height: PREVIEW_SIZE,
+              borderRadius: '50%', overflow: 'hidden',
+              boxShadow: '0 4px 16px rgba(0,0,0,0.25)',
+              cursor: 'grab', border: '2px solid rgba(255,255,255,0.8)',
+              background: 'repeating-conic-gradient(#ccc 0% 25%, #fff 0% 50%) 0 0 / 12px 12px',
+            }} onMouseDown={handlePanMD}>
+              <img src={preview} alt="charm preview"
+                style={{ position: 'absolute', top: '50%', left: '50%',
+                  transform: `translate(calc(-50% + ${offset.x}px), calc(-50% + ${offset.y}px))`,
+                  maxWidth: 'none', maxHeight: 'none',
+                  width: PREVIEW_SIZE, height: PREVIEW_SIZE,
+                  objectFit: 'contain',
+                  pointerEvents: 'none', userSelect: 'none',
+                }} />
+            </div>
+            <p style={{ fontSize: 11, color: '#888', margin: 0, fontFamily: 'sans-serif' }}>drag to reposition</p>
+            <button className="paper-editor__cancel" style={{ fontSize: 11 }}
+              onClick={() => fileRef.current?.click()}>change image</button>
+          </div>
+        )}
+
+        <input ref={fileRef} type="file" accept="image/*" style={{ display: 'none' }}
+          onChange={async e => { const f = e.target.files?.[0]; if (f) handleFile(f); }} />
+
         <div className="keychain-upload-modal__footer">
           <button className="paper-editor__cancel" onClick={onCancel}>cancel</button>
-          <button className="paper-editor__done" disabled={!preview} onClick={() => preview && onUpload(preview)}>attach charm</button>
+          <button className="paper-editor__done" disabled={!preview}
+            onClick={() => preview && onUpload(preview, offset.x, offset.y)}>
+            attach charm
+          </button>
         </div>
       </div>
     </div>
@@ -1538,73 +1588,84 @@ function KeychainContextMenu({ chain, x, y, onChangeImage, onDetach, onRemove }:
 function KeychainItem({ data, rings, onContextMenu, onDragEnd, onAttach, onDetach }: {
   data: KeychainData;
   rings: KeyringData[];
-  onContextMenu: (e:React.MouseEvent) => void;
-  onDragEnd: (id:string, left:number, top:number, snapRingId:string|null) => void;
-  onAttach: (chainId:string, ringId:string) => void;
-  onDetach: (chainId:string) => void;
+  onContextMenu: (e: React.MouseEvent) => void;
+  onDragEnd: (id: string, left: number, top: number, snapRingId: string | null) => void;
+  onAttach: (chainId: string, ringId: string) => void;
+  onDetach: (chainId: string) => void;
 }) {
-  const dragRef = useRef({ sX:0,sY:0,oL:0,oT:0 });
-  const [snapHighlight, setSnapHighlight] = useState<string|null>(null);
+  const dragRef = useRef({ sX: 0, sY: 0, oL: 0, oT: 0 });
+  const [snapHighlight, setSnapHighlight] = useState<string | null>(null);
 
   const attachedRing = rings.find(r => r.id === data.attachedRingId);
 
-  // Position: if attached, hang below the ring's center
-  const displayLeft = attachedRing ? attachedRing.left - 4 : data.left;
-  const displayTop  = attachedRing ? attachedRing.top + 36 : data.top;
+  const HOOK_W = 90;
+  const RING_CENTER_X = 28; // green.svg center offset
+  const displayLeft = attachedRing ? attachedRing.left + RING_CENTER_X - HOOK_W / 2 : data.left;
+  const displayTop  = attachedRing ? attachedRing.top + 30 : data.top;
 
   const handleMD = (e: React.MouseEvent) => {
     e.preventDefault(); e.stopPropagation();
-    // If attached, detach first so user can drag freely
     if (data.attachedRingId) onDetach(data.id);
 
-    dragRef.current = { sX:e.clientX, sY:e.clientY, oL:displayLeft, oT:displayTop };
-    const el = document.getElementById('chain-'+data.id)!;
+    dragRef.current = { sX: e.clientX, sY: e.clientY, oL: displayLeft, oT: displayTop };
+    const el = document.getElementById('chain-' + data.id)!;
 
-    const move = (mv:MouseEvent) => {
-      const nl = dragRef.current.oL+(mv.clientX-dragRef.current.sX);
-      const nt = dragRef.current.oT+(mv.clientY-dragRef.current.sY);
-      el.style.left=nl+'px'; el.style.top=nt+'px';
-      // Check snap proximity — use top-center of hook as attach point
-      const hookX = nl + 24; const hookY = nt + 8;
-      const near = rings.find(r => Math.hypot((r.left+28)-hookX, (r.top+28)-hookY) < SNAP_RADIUS);
+    const move = (mv: MouseEvent) => {
+      const nl = dragRef.current.oL + (mv.clientX - dragRef.current.sX);
+      const nt = dragRef.current.oT + (mv.clientY - dragRef.current.sY);
+      el.style.left = nl + 'px'; el.style.top = nt + 'px';
+      const hookX = nl + HOOK_W / 2; const hookY = nt + 10;
+      const near = rings.find(r => Math.hypot((r.left + RING_CENTER_X) - hookX, (r.top + 28) - hookY) < SNAP_RADIUS);
       setSnapHighlight(near?.id ?? null);
     };
-    const up = (uv:MouseEvent) => {
-      window.removeEventListener('mousemove',move); window.removeEventListener('mouseup',up);
-      const nl = dragRef.current.oL+(uv.clientX-dragRef.current.sX);
-      const nt = dragRef.current.oT+(uv.clientY-dragRef.current.sY);
-      const hookX = nl + 24; const hookY = nt + 8;
-      const near = rings.find(r => Math.hypot((r.left+28)-hookX, (r.top+28)-hookY) < SNAP_RADIUS);
+    const up = (uv: MouseEvent) => {
+      window.removeEventListener('mousemove', move); window.removeEventListener('mouseup', up);
+      const nl = dragRef.current.oL + (uv.clientX - dragRef.current.sX);
+      const nt = dragRef.current.oT + (uv.clientY - dragRef.current.sY);
+      const hookX = nl + HOOK_W / 2; const hookY = nt + 10;
+      const near = rings.find(r => Math.hypot((r.left + RING_CENTER_X) - hookX, (r.top + 28) - hookY) < SNAP_RADIUS);
       setSnapHighlight(null);
-      if (near) { onAttach(data.id, near.id); }
+      if (near) onAttach(data.id, near.id);
       else onDragEnd(data.id, nl, nt, null);
     };
-    window.addEventListener('mousemove',move); window.addEventListener('mouseup',up);
+    window.addEventListener('mousemove', move); window.addEventListener('mouseup', up);
   };
 
   return (
     <>
-      {/* Snap highlight ring */}
-      {snapHighlight && rings.filter(r=>r.id===snapHighlight).map(r => (
-        <div key={r.id} style={{ position:'absolute', left:r.left-8, top:r.top-8, width:72, height:72,
-          borderRadius:'50%', border:'2px dashed rgba(74,222,128,0.8)',
-          pointerEvents:'none', zIndex:28, animation:'pulse-ring 0.6s ease infinite' }} />
+      {snapHighlight && rings.filter(r => r.id === snapHighlight).map(r => (
+        <div key={r.id} style={{ position: 'absolute', left: r.left - 8, top: r.top - 8, width: 72, height: 72,
+          borderRadius: '50%', border: '2px dashed rgba(74,222,128,0.8)',
+          pointerEvents: 'none', zIndex: 28, animation: 'pulse-ring 0.6s ease infinite' }} />
       ))}
-      <div id={'chain-'+data.id} onContextMenu={onContextMenu} onMouseDown={handleMD}
-        style={{ position:'absolute', left:displayLeft, top:displayTop,
-          cursor:'grab', userSelect:'none', zIndex:data.attachedRingId?25:35,
-          display:'flex', flexDirection:'column', alignItems:'center',
-          filter:'drop-shadow(1px 3px 6px rgba(0,0,0,0.35))',
+
+      <div id={'chain-' + data.id} onContextMenu={onContextMenu} onMouseDown={handleMD}
+        style={{ position: 'absolute', left: displayLeft, top: displayTop,
+          cursor: 'grab', userSelect: 'none',
+          zIndex: data.attachedRingId ? 25 : 35,
+          display: 'flex', flexDirection: 'column', alignItems: 'center',
         }}>
-        {/* Hook — sits above charm, rendered BELOW green ring via z-index */}
-        <img src="/hookything.svg" alt="" style={{ width:48, height:48, display:'block', pointerEvents:'none', position:'relative', zIndex:24 }} />
-        {/* Charm image */}
+
+        {/* Hook — bigger than the ring, sits between ring and charm */}
+        <img src="/hookything.svg" alt=""
+          style={{ width: HOOK_W, height: HOOK_W, display: 'block', pointerEvents: 'none',
+            position: 'relative', zIndex: 24, marginBottom: -8 }} />
+
+        {/* Charm — transparent-friendly, natural proportions, faux depth via drop-shadow */}
         {data.imageUrl && (
-          <div style={{ width:80, height:80, borderRadius:'50%', overflow:'hidden',
-            border:'3px solid rgba(255,255,255,0.9)', boxShadow:'0 3px 10px rgba(0,0,0,0.3)',
-            marginTop:-6, background:'#fff', flexShrink:0,
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center',
+            filter: 'drop-shadow(0 6px 14px rgba(0,0,0,0.45))',
+            maxWidth: 100,
           }}>
-            <img src={data.imageUrl} alt="charm" style={{ width:'100%', height:'100%', objectFit:'cover', pointerEvents:'none' }} />
+            <img src={data.imageUrl} alt="charm"
+              style={{
+                maxWidth: 100, maxHeight: 110,
+                objectFit: 'contain',
+                display: 'block',
+                pointerEvents: 'none',
+                userSelect: 'none',
+                transform: `translate(${data.imgOffsetX}px, ${data.imgOffsetY}px)`,
+              }} />
           </div>
         )}
       </div>
@@ -1747,7 +1808,7 @@ export default function Board() {
       if (data) setKeyrings(data.map(r => ({ id:r.id, left:r.x, top:r.y, color:r.color??'#4ade80', locked:r.locked??true })));
     });
     supabase.from('keychains').select('*').order('created_at').then(({ data }) => {
-      if (data) setKeychains(data.map(c => ({ id:c.id, left:c.x, top:c.y, imageUrl:c.image_url??'', attachedRingId:c.attached_ring_id??null })));
+      if (data) setKeychains(data.map(c => ({ id:c.id, left:c.x, top:c.y, imageUrl:c.image_url??'', attachedRingId:c.attached_ring_id??null, imgOffsetX:c.img_offset_x??0, imgOffsetY:c.img_offset_y??0 })));
     });
   }, []);
 
@@ -1803,7 +1864,7 @@ export default function Board() {
       setKeyrings(prev => [...prev, ring]);
       syncKeyring(ring);
       // Add a keychain body without image yet — will be filled by upload prompt
-      const chain: KeychainData = { id: crypto.randomUUID(), left: ring.left - 4, top: ring.top + 36, imageUrl: '', attachedRingId: ring.id };
+      const chain: KeychainData = { id: crypto.randomUUID(), left: ring.left - 4, top: ring.top + 36, imageUrl: '', attachedRingId: ring.id, imgOffsetX: 0, imgOffsetY: 0 };
       setKeychains(prev => [...prev, chain]);
       syncKeychain(chain);
       setPendingUploadChainId(chain.id);
@@ -2073,8 +2134,8 @@ export default function Board() {
     setKeychains(updated);
     const upd = updated.find(c=>c.id===chainId); if (upd) syncKeychain(upd);
   };
-  const updateChainImage = (chainId: string, imageUrl: string) => {
-    const updated = keychains.map(c => c.id===chainId ? {...c,imageUrl} : c);
+  const updateChainImage = (chainId: string, imageUrl: string, imgOffsetX = 0, imgOffsetY = 0) => {
+    const updated = keychains.map(c => c.id===chainId ? {...c,imageUrl,imgOffsetX,imgOffsetY} : c);
     setKeychains(updated);
     const c = updated.find(c=>c.id===chainId); if (c) syncKeychain(c);
     setUploadChainId(null); setPendingUploadChainId(null);
@@ -2200,7 +2261,7 @@ export default function Board() {
       {/* Keychain upload prompt — shown when a new keychain is placed */}
       {(pendingChain || uploadChain) && (
         <KeychainUploadPrompt
-          onUpload={url => updateChainImage((pendingChain || uploadChain)!.id, url)}
+          onUpload={(url, ox, oy) => updateChainImage((pendingChain || uploadChain)!.id, url, ox, oy)}
           onCancel={() => {
             if (pendingChain) {
               // Remove the ring + chain if upload is cancelled before first image

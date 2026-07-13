@@ -1,0 +1,2 @@
+ALTER TABLE keychains ADD COLUMN IF NOT EXISTS img_offset_x float NOT NULL DEFAULT 0;
+ALTER TABLE keychains ADD COLUMN IF NOT EXISTS img_offset_y float NOT NULL DEFAULT 0;
