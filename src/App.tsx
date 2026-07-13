@@ -43,9 +43,12 @@ interface ReceiptData {
   hasPin: boolean; hasTape: boolean; pinColor: string; tapeColor: string; tapeImage: string;
 }
 
+type PaperLineType = 'text' | 'checkbox' | 'checkbox-sub' | 'important' | 'squiggly' | 'curved';
+interface PaperLine { id: string; type: PaperLineType; text: string; checked: boolean }
+
 interface PaperData {
   id: string; left: number; top: number; rotation: number; scale: number;
-  text: string; width: number; height: number;
+  title: string; lines: PaperLine[]; width: number; height: number;
   hasPin: boolean; hasTape: boolean; pinColor: string; tapeColor: string; tapeImage: string;
 }
 
@@ -217,7 +220,7 @@ async function syncReceipt(r: ReceiptData) {
 async function syncPaper(p: PaperData) {
   await supabase.from('board_papers').upsert({
     id: p.id, x: p.left, y: p.top, rotation: p.rotation, scale: p.scale,
-    text: p.text, width: p.width, height: p.height,
+    title: p.title, lines: p.lines, width: p.width, height: p.height,
     has_pin: p.hasPin, has_tape: p.hasTape,
     pin_color: p.pinColor, tape_color: p.tapeColor, tape_image: p.tapeImage,
   });
@@ -366,7 +369,7 @@ function colorSub<T>(
         <label className="ctx-upload-row" title="upload tape design">
           <Upload size={13} /><span>upload</span>
           <input type="file" accept="image/*" style={{ display:'none' }}
-            onChange={e => { const f=e.target.files?.[0]; if(!f) return; const r=new FileReader(); r.onload=()=>onPatch(id,{tapeImage:r.result as string, hasTape:true} as Partial<T>); r.readAsDataURL(f); e.target.value=''; }} />
+            onChange={e => { const f=e.target.files?.[0]; if(!f) return; const r=new FileReader(); r.onload=()=>onPatch(id,{tapeImage:r.result as string, hasTape:true} as unknown as Partial<T>); r.readAsDataURL(f); e.target.value=''; }} />
         </label>
       )}
     </div>
@@ -896,31 +899,205 @@ function ReceiptContextMenu({ receipt, x, y, onPatch, onRemove, onDuplicate, onE
 
 // ─── Sheet of Paper ───────────────────────────────────────────────────────────
 
+function newLine(type: PaperLineType = 'text'): PaperLine {
+  return { id: crypto.randomUUID(), type, text: '', checked: false };
+}
+
+function PaperEditor({ title: initTitle, lines: initLines, onSave, onCancel }: {
+  title: string; lines: PaperLine[];
+  onSave: (title: string, lines: PaperLine[]) => void;
+  onCancel: () => void;
+}) {
+  const [title, setTitle] = useState(initTitle);
+  const [lines, setLines] = useState<PaperLine[]>(initLines.length ? initLines : [newLine()]);
+  const inputRefs = useRef<Record<string, HTMLInputElement | HTMLTextAreaElement | null>>({});
+
+  const updateLine = (id: string, patch: Partial<PaperLine>) =>
+    setLines(ls => ls.map(l => l.id === id ? { ...l, ...patch } : l));
+
+  const removeLine = (id: string) =>
+    setLines(ls => ls.filter(l => l.id !== id));
+
+  const moveLine = (id: string, dir: -1 | 1) => {
+    setLines(ls => {
+      const i = ls.findIndex(l => l.id === id);
+      if (i < 0) return ls;
+      const next = i + dir;
+      if (next < 0 || next >= ls.length) return ls;
+      const arr = [...ls];
+      [arr[i], arr[next]] = [arr[next], arr[i]];
+      return arr;
+    });
+  };
+
+  // Smart typing on body lines
+  const handleLineKeyDown = (e: React.KeyboardEvent<HTMLInputElement>, line: PaperLine, idx: number) => {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      // Detect trigger prefix: if text starts with -- / -~ / -)
+      const text = line.text;
+      const nextType: PaperLineType =
+        text.startsWith('--') ? 'important' :
+        text.startsWith('-~') ? 'squiggly' :
+        text.startsWith('-)') ? 'curved' :
+        text.startsWith('-') ? 'checkbox' :
+        line.type === 'checkbox' || line.type === 'checkbox-sub' ? line.type :
+        line.type;
+      const cleanText = ['--','-~','-)'].some(p => text.startsWith(p)) ? text.slice(2).trimStart() :
+        text.startsWith('-') ? text.slice(1).trimStart() : text;
+
+      // Update current line with cleaned text and correct type
+      if (cleanText !== text || nextType !== line.type) {
+        updateLine(line.id, { text: cleanText, type: nextType });
+      }
+
+      const fresh = newLine(nextType === 'important' || nextType === 'squiggly' || nextType === 'curved' ? nextType : line.type);
+      setLines(ls => {
+        const arr = [...ls];
+        arr.splice(idx + 1, 0, fresh);
+        return arr;
+      });
+      setTimeout(() => inputRefs.current[fresh.id]?.focus(), 0);
+    } else if (e.key === 'Tab') {
+      e.preventDefault();
+      if (line.type === 'checkbox') {
+        updateLine(line.id, { type: 'checkbox-sub' });
+      } else if (line.type === 'checkbox-sub') {
+        updateLine(line.id, { type: 'checkbox' });
+      }
+    } else if (e.key === 'Backspace' && line.text === '' && lines.length > 1) {
+      e.preventDefault();
+      const prev = lines[idx - 1];
+      removeLine(line.id);
+      if (prev) setTimeout(() => inputRefs.current[prev.id]?.focus(), 0);
+    }
+  };
+
+  // Detect type on blur (for users who don't press Enter)
+  const handleLineBlur = (line: PaperLine) => {
+    const text = line.text;
+    if (text.startsWith('--')) updateLine(line.id, { type:'important', text: text.slice(2).trimStart() });
+    else if (text.startsWith('-~')) updateLine(line.id, { type:'squiggly', text: text.slice(2).trimStart() });
+    else if (text.startsWith('-)')) updateLine(line.id, { type:'curved', text: text.slice(2).trimStart() });
+    else if (text.startsWith('-') && line.type === 'text') updateLine(line.id, { type:'checkbox', text: text.slice(1).trimStart() });
+  };
+
+  const lineIcon = (type: PaperLineType) => {
+    if (type === 'checkbox' || type === 'checkbox-sub') return null;
+    if (type === 'important') return '∗';
+    if (type === 'squiggly')  return '⤳';
+    if (type === 'curved')    return '⤹';
+    return null;
+  };
+
+  return (
+    <div className="paper-editor">
+      <input
+        className="paper-editor__title"
+        value={title}
+        onChange={e => setTitle(e.target.value)}
+        placeholder="Title..."
+        onMouseDown={e => e.stopPropagation()}
+      />
+      <div className="paper-editor__divider" />
+      <div className="paper-editor__body">
+        {lines.map((line, idx) => {
+          const isCb = line.type === 'checkbox' || line.type === 'checkbox-sub';
+          const isSubtask = line.type === 'checkbox-sub';
+          const icon = lineIcon(line.type);
+          return (
+            <div key={line.id} className={`paper-line paper-line--${line.type}`}>
+              {isCb && (
+                <button
+                  className={`paper-cb${line.checked ? ' paper-cb--checked' : ''}`}
+                  onMouseDown={e => e.stopPropagation()}
+                  onClick={() => updateLine(line.id, { checked: !line.checked })}
+                />
+              )}
+              {!isCb && icon && <span className="paper-line__icon">{icon}</span>}
+              <input
+                ref={el => { inputRefs.current[line.id] = el; }}
+                className={`paper-line__input${line.checked ? ' paper-line__input--done' : ''}${isSubtask ? ' paper-line__input--sub' : ''}`}
+                value={line.text}
+                placeholder={idx === 0 && lines.length === 1 ? 'Start typing… use - for checkbox, -- for ★ list, -~ for squiggly, -) for curved. Tab to indent.' : ''}
+                onChange={e => updateLine(line.id, { text: e.target.value })}
+                onKeyDown={e => handleLineKeyDown(e, line, idx)}
+                onBlur={() => handleLineBlur(line)}
+                onMouseDown={e => e.stopPropagation()}
+              />
+              <div className="paper-line__controls">
+                <button className="paper-line__move" onMouseDown={e=>e.stopPropagation()} onClick={() => moveLine(line.id, -1)} disabled={idx===0} title="Move up">↑</button>
+                <button className="paper-line__move" onMouseDown={e=>e.stopPropagation()} onClick={() => moveLine(line.id, 1)} disabled={idx===lines.length-1} title="Move down">↓</button>
+                <button className="paper-line__del" onMouseDown={e=>e.stopPropagation()} onClick={() => removeLine(line.id)} title="Delete">×</button>
+              </div>
+            </div>
+          );
+        })}
+        <button className="paper-editor__add-line" onMouseDown={e=>e.stopPropagation()} onClick={() => {
+          const l = newLine(); setLines(ls => [...ls, l]);
+          setTimeout(() => inputRefs.current[l.id]?.focus(), 0);
+        }}>+ line</button>
+      </div>
+      <div className="paper-editor__footer">
+        <button className="note-save-btn" style={{ background:'#5a6e3a', color:'#fff' }} onMouseDown={e=>e.stopPropagation()} onClick={() => onSave(title, lines)}>done</button>
+        <button className="note-cancel-btn" style={{ color:'#5a6e3a', borderColor:'#5a6e3a' }} onMouseDown={e=>e.stopPropagation()} onClick={onCancel}>cancel</button>
+      </div>
+    </div>
+  );
+}
+
+function PaperDisplay({ title, lines }: { title: string; lines: PaperLine[] }) {
+  const lineIcon = (type: PaperLineType) => {
+    if (type === 'important') return '∗';
+    if (type === 'squiggly')  return '⤳';
+    if (type === 'curved')    return '⤹';
+    return null;
+  };
+
+  return (
+    <div className="paper-display">
+      {title && <div className="paper-display__title">{title}</div>}
+      {title && <div className="paper-editor__divider" />}
+      <div className="paper-display__lines">
+        {lines.length === 0 && <span className="paper-display__empty">right-click → edit text</span>}
+        {lines.map(line => {
+          const isCb = line.type === 'checkbox' || line.type === 'checkbox-sub';
+          const icon = lineIcon(line.type);
+          return (
+            <div key={line.id} className={`paper-line paper-line--${line.type}`}>
+              {isCb && (
+                <span className={`paper-cb paper-cb--view${line.checked ? ' paper-cb--checked' : ''}`} />
+              )}
+              {!isCb && icon && <span className="paper-line__icon">{icon}</span>}
+              <span className={`paper-line__text${line.checked ? ' paper-line__input--done' : ''}${line.type==='checkbox-sub' ? ' paper-line__input--sub' : ''}`}>{line.text}</span>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 interface PaperProps {
   data: PaperData; isSelected: boolean;
   onSelect: () => void; onContextMenu: (e: React.MouseEvent) => void;
   onRemove: (id: string) => void;
-  onChange: (id: string, text: string) => void;
+  onSaveContent: (id: string, title: string, lines: PaperLine[]) => void;
   onDragEnd: (id: string, l: number, t: number) => void;
   onRotateEnd: (id: string, r: number) => void;
   onResizeEnd: (id: string, s: number) => void;
   onResizeDims: (id: string, w: number, h: number) => void;
+  editing: boolean;
+  onStartEdit: () => void;
+  onEndEdit: () => void;
 }
 
-function PaperItem({ data, isSelected, onSelect, onContextMenu, onRemove, onChange, onDragEnd, onRotateEnd, onResizeEnd, onResizeDims }: PaperProps) {
-  const [editing, setEditing] = useState(false);
-  const [draft, setDraft] = useState(data.text);
-  const taRef = useRef<HTMLTextAreaElement>(null);
+function PaperItem({ data, isSelected, onSelect, onContextMenu, onRemove, onSaveContent, onDragEnd, onRotateEnd, onResizeEnd, onResizeDims, editing, onStartEdit, onEndEdit }: PaperProps) {
   const dragRef = useRef({ sX:0,sY:0,oL:0,oT:0 });
-
-  useEffect(() => { if (!editing) setDraft(data.text); }, [data.text, editing]);
-  useEffect(() => { if (editing) taRef.current?.focus(); }, [editing]);
-
-  const save = () => { onChange(data.id, draft); setEditing(false); };
 
   const handleMD = (e: React.MouseEvent<HTMLDivElement>) => {
     onSelect();
-    if (editing || (e.target as HTMLElement).closest('button,textarea,.sel-rot-handle,.sel-resize-handle,.paper-resize-corner')) return;
+    if (editing || (e.target as HTMLElement).closest('button,input,textarea,.sel-rot-handle,.sel-resize-handle,.paper-resize-corner')) return;
     e.preventDefault();
     dragRef.current = { sX:e.clientX, sY:e.clientY, oL:data.left, oT:data.top };
     const el = document.getElementById('paper-'+data.id)!;
@@ -929,32 +1106,29 @@ function PaperItem({ data, isSelected, onSelect, onContextMenu, onRemove, onChan
     window.addEventListener('mousemove',move); window.addEventListener('mouseup',up);
   };
 
-  // Corner resize: drag bottom-right corner to resize width+height
   const handleCornerMD = (e: React.MouseEvent) => {
     e.preventDefault(); e.stopPropagation();
     const startX = e.clientX, startY = e.clientY;
     const startW = data.width, startH = data.height;
     const el = document.getElementById('paper-'+data.id)!;
     const move = (mv: MouseEvent) => {
-      const nw = Math.max(180, startW + (mv.clientX - startX) / data.scale);
-      const nh = Math.max(200, startH + (mv.clientY - startY) / data.scale);
+      const nw = Math.max(220, startW + (mv.clientX - startX) / data.scale);
+      const nh = Math.max(240, startH + (mv.clientY - startY) / data.scale);
       el.style.width = nw + 'px'; el.style.height = nh + 'px';
     };
     const up = (uv: MouseEvent) => {
       window.removeEventListener('mousemove',move); window.removeEventListener('mouseup',up);
-      const nw = Math.max(180, startW + (uv.clientX - startX) / data.scale);
-      const nh = Math.max(200, startH + (uv.clientY - startY) / data.scale);
-      onResizeDims(data.id, nw, nh);
+      onResizeDims(data.id, Math.max(220, startW + (uv.clientX - startX) / data.scale), Math.max(240, startH + (uv.clientY - startY) / data.scale));
     };
     window.addEventListener('mousemove',move); window.addEventListener('mouseup',up);
   };
 
-  const lineH = 32; // px — matches 1.5em at ~21px font size (Google Fonts Waiting for the Sunrise)
+  const lineH = 34;
 
   return (
     <div id={'paper-'+data.id}
       style={{ position:'absolute', left:data.left, top:data.top, width:data.width, height:data.height,
-        cursor:'grab', userSelect:'none', transform:`rotate(${data.rotation}deg) scale(${data.scale})`,
+        cursor:editing?'default':'grab', userSelect:'none', transform:`rotate(${data.rotation}deg) scale(${data.scale})`,
         transformOrigin:'center center', filter:'drop-shadow(3px 6px 14px rgba(0,0,0,0.28))',
         overflow:'visible', zIndex:isSelected?50:'auto' }}
       onMouseDown={handleMD} onContextMenu={onContextMenu}>
@@ -962,39 +1136,33 @@ function PaperItem({ data, isSelected, onSelect, onContextMenu, onRemove, onChan
       {isSelected && <SelectionOverlay elemId={'paper-'+data.id} rotation={data.rotation} scale={data.scale} onRotate={r=>onRotateEnd(data.id,r)} onResize={s=>onResizeEnd(data.id,s)} />}
       <Decorations hasPin={data.hasPin} hasTape={data.hasTape} pinColor={data.pinColor} tapeColor={data.tapeColor} tapeImage={data.tapeImage} />
 
-      {/* Paper surface */}
-      <div className="paper-card" style={{ width:'100%', height:'100%',
+      <div className="paper-card" style={{
+        width:'100%', height:'100%',
         backgroundSize:`100% ${lineH}px`,
-        backgroundPosition:`0 ${lineH * 1.2}px`,
+        backgroundPosition:`0 ${lineH * 1.35}px`,
         backgroundOrigin:'content-box',
-        padding:'20px 18px 18px',
+        padding:'18px 18px 18px',
         boxSizing:'border-box',
+        overflow:'auto',
       }}>
         {editing ? (
-          <>
-            <textarea ref={taRef} value={draft} onChange={e=>setDraft(e.target.value)}
-              style={{ width:'100%', height:'calc(100% - 36px)', resize:'none', background:'transparent', border:'none', outline:'none',
-                fontFamily:"'Waiting for the Sunrise', cursive", fontSize:'140%', lineHeight:`${lineH}px`,
-                color:'#2a2a2a', padding:0, display:'block' }} />
-            <div style={{ display:'flex', gap:6, marginTop:6 }}>
-              <button className="note-save-btn" style={{ background:'#5a6e3a', color:'#fff' }} onMouseDown={e=>e.stopPropagation()} onClick={save}>save</button>
-              <button className="note-cancel-btn" style={{ color:'#5a6e3a', borderColor:'#5a6e3a' }} onMouseDown={e=>e.stopPropagation()} onClick={()=>{setDraft(data.text);setEditing(false);}}>cancel</button>
-            </div>
-          </>
+          <PaperEditor
+            title={data.title}
+            lines={data.lines}
+            onSave={(t, ls) => { onSaveContent(data.id, t, ls); onEndEdit(); }}
+            onCancel={onEndEdit}
+          />
         ) : (
           <>
-            <div style={{ fontFamily:"'Waiting for the Sunrise', cursive", fontSize:'140%', lineHeight:`${lineH}px`, color:'#2a2a2a', whiteSpace:'pre-wrap', wordBreak:'break-word', height:'calc(100% - 36px)', overflow:'hidden' }}>
-              {data.text || <span style={{ color:'rgba(0,0,0,0.25)', fontStyle:'italic', fontSize:'80%' }}>right-click → edit text</span>}
-            </div>
+            <PaperDisplay title={data.title} lines={data.lines} />
             <span className="note-controls" style={{ bottom:6, right:6 }}>
-              <button className="note-ctrl-btn" style={{ color:'#5a6e3a', borderColor:'#5a6e3a' }} onMouseDown={e=>e.stopPropagation()} onClick={()=>setEditing(true)}>edit</button>
+              <button className="note-ctrl-btn" style={{ color:'#5a6e3a', borderColor:'#5a6e3a' }} onMouseDown={e=>e.stopPropagation()} onClick={() => { onSelect(); onStartEdit(); }}>edit</button>
               <button className="note-ctrl-btn" style={{ color:'#b05050', borderColor:'#b05050' }} onMouseDown={e=>e.stopPropagation()} onClick={()=>onRemove(data.id)}>×</button>
             </span>
           </>
         )}
       </div>
 
-      {/* Bottom-right corner drag handle */}
       <div className="paper-resize-corner" onMouseDown={handleCornerMD} title="Drag to resize" />
     </div>
   );
@@ -1012,7 +1180,7 @@ interface PaperCtxProps {
 
 function PaperContextMenu({ paper, x, y, onPatch, onRemove, onDuplicate, onEdit }: PaperCtxProps) {
   const left = Math.min(x, window.innerWidth - 210);
-  const top  = Math.min(y, window.innerHeight - 280);
+  const top  = Math.min(y, window.innerHeight - 300);
   return (
     <div className="ctx-menu" style={{ left, top }} onClick={e=>e.stopPropagation()}>
       <CtxRow label="edit text" onClick={() => onEdit(paper.id)} />
@@ -1184,7 +1352,7 @@ export default function Board() {
       if (data) {
         loadedPapers = data.map(p => ({
           id:p.id, left:p.x, top:p.y, rotation:p.rotation??0, scale:p.scale??1,
-          text:p.text??'', width:p.width??280, height:p.height??360,
+          title:p.title??'', lines:p.lines??[], width:p.width??300, height:p.height??400,
           hasPin:p.has_pin??false, hasTape:p.has_tape??false,
           pinColor:p.pin_color??PIN_DEFAULT, tapeColor:p.tape_color??'#fef08a', tapeImage:p.tape_image??'',
         }));
@@ -1227,8 +1395,8 @@ export default function Board() {
       setEditReceiptId(r.id);
     } else if (type === 'paper') {
       const p: PaperData = {
-        id:crypto.randomUUID(), left:rand(20,window.innerWidth-320), top:rand(60,window.innerHeight-400),
-        rotation:rand(-2,2), scale:1, text:'', width:280, height:360,
+        id:crypto.randomUUID(), left:rand(20,window.innerWidth-340), top:rand(60,window.innerHeight-440),
+        rotation:rand(-2,2), scale:1, title:'', lines:[], width:300, height:400,
         hasPin:false, hasTape:false, pinColor:PIN_DEFAULT, tapeColor:'#fef08a', tapeImage:'',
       };
       const updated = [...papers, p];
@@ -1434,11 +1602,10 @@ export default function Board() {
     const p = updated.find(p=>p.id===id); if (p) syncPaper(p);
   };
 
-  const updatePaperText = (id: string, text: string) => {
-    const updated = papers.map(p => p.id===id ? {...p,text} : p);
+  const updatePaperContent = (id: string, title: string, lines: PaperLine[]) => {
+    const updated = papers.map(p => p.id===id ? {...p,title,lines} : p);
     pushHistory(notes, frames, receipts, updated); setPapers(updated);
     const p = updated.find(p=>p.id===id); if (p) syncPaper(p);
-    setEditPaperId(null);
   };
 
   const duplicatePaper = (src: PaperData) => {
@@ -1490,9 +1657,12 @@ export default function Board() {
         <PaperItem key={p.id} data={p} isSelected={selectedId===p.id}
           onSelect={() => setSelectedId(p.id)}
           onContextMenu={e => { e.preventDefault(); e.stopPropagation(); setSelectedId(p.id); setPaperCtx({v:true,x:e.clientX,y:e.clientY,id:p.id}); }}
-          onRemove={removePaper} onChange={updatePaperText}
+          onRemove={removePaper} onSaveContent={updatePaperContent}
           onDragEnd={paperDragEnd} onRotateEnd={paperRotateEnd} onResizeEnd={paperResizeEnd}
-          onResizeDims={paperResizeDims} />
+          onResizeDims={paperResizeDims}
+          editing={editPaperId===p.id}
+          onStartEdit={() => setEditPaperId(p.id)}
+          onEndEdit={() => setEditPaperId(null)} />
       ))}
 
       {/* Toolbar */}

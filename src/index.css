@@ -586,11 +586,226 @@ div[id^="frame-"]:hover .frame-remove-btn {
 
 /* ── Paper card ────────────────────────────────────────────────── */
 .paper-card {
-  background-color: rgba(255, 255, 0, 0.38);
-  background-image: linear-gradient(rgba(0,0,0,0.1) 1px, transparent 1px);
-  box-shadow: 0 0 12px rgba(0,0,0,0.28);
+  background-color: #fefde6;
+  background-image: linear-gradient(rgba(0, 0, 180, 0.08) 1px, transparent 1px);
+  box-shadow: 2px 2px 10px rgba(0,0,0,0.22), 0 0 0 1px rgba(0,0,0,0.06);
   border-radius: 2px;
   position: relative;
+  font-family: 'Waiting for the Sunrise', cursive;
+}
+
+/* ── Paper editor ──────────────────────────────────────────────── */
+.paper-editor {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  gap: 0;
+}
+
+.paper-editor__title {
+  font-family: 'Waiting for the Sunrise', cursive;
+  font-size: 1.45rem;
+  font-weight: bold;
+  color: #37353f;
+  background: transparent;
+  border: none;
+  outline: none;
+  width: 100%;
+  padding: 0 0 4px 0;
+  border-bottom: 2px solid rgba(252, 139, 147, 0.6);
+  margin-bottom: 6px;
+}
+
+.paper-editor__divider {
+  height: 1.5px;
+  background: linear-gradient(to right, rgba(252,139,147,0.5) 0%, rgba(253,200,48,0.4) 100%);
+  margin-bottom: 8px;
+  border-radius: 2px;
+}
+
+.paper-editor__body {
+  flex: 1;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.paper-editor__footer {
+  display: flex;
+  gap: 6px;
+  padding-top: 8px;
+  border-top: 1px dashed rgba(0,0,0,0.1);
+  margin-top: 6px;
+}
+
+.paper-editor__add-line {
+  background: none;
+  border: 1px dashed rgba(0,0,0,0.2);
+  border-radius: 4px;
+  padding: 3px 10px;
+  font-family: 'Waiting for the Sunrise', cursive;
+  font-size: 1rem;
+  color: #888;
+  cursor: pointer;
+  margin-top: 4px;
+  align-self: flex-start;
+  transition: border-color 0.15s, color 0.15s;
+}
+.paper-editor__add-line:hover { border-color: #555; color: #333; }
+
+/* ── Paper lines ───────────────────────────────────────────────── */
+.paper-line {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  min-height: 30px;
+  position: relative;
+}
+
+.paper-line--checkbox-sub {
+  padding-left: 22px;
+}
+
+.paper-line:hover .paper-line__controls {
+  opacity: 1;
+}
+
+.paper-line__controls {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  opacity: 0;
+  transition: opacity 0.1s;
+  flex-shrink: 0;
+}
+
+.paper-line__move {
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-size: 11px;
+  color: #aaa;
+  padding: 0 2px;
+  line-height: 1;
+  transition: color 0.1s;
+}
+.paper-line__move:hover:not(:disabled) { color: #555; }
+.paper-line__move:disabled { opacity: 0.2; cursor: default; }
+
+.paper-line__del {
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-size: 13px;
+  color: #e09090;
+  padding: 0 2px;
+  line-height: 1;
+  transition: color 0.1s;
+}
+.paper-line__del:hover { color: #c03030; }
+
+.paper-line__icon {
+  font-size: 1.4rem;
+  line-height: 1;
+  color: #37353f;
+  flex-shrink: 0;
+  width: 22px;
+  text-align: center;
+}
+
+.paper-line--squiggly .paper-line__icon { color: #396afc; }
+.paper-line--important .paper-line__icon { color: #965784; font-size: 1.6rem; }
+.paper-line--curved .paper-line__icon { color: #feac5e; transform: rotate(-45deg) translateY(-2px); display: inline-block; }
+
+.paper-line__input {
+  flex: 1;
+  background: transparent;
+  border: none;
+  outline: none;
+  font-family: 'Waiting for the Sunrise', cursive;
+  font-size: 1.1rem;
+  color: #37353f;
+  line-height: 1.5;
+  padding: 2px 0;
+  width: 100%;
+}
+
+.paper-line__input--done {
+  text-decoration: line-through;
+  color: #aaa;
+}
+
+.paper-line__input--sub {
+  font-size: 0.98rem;
+  color: #555;
+}
+
+.paper-line__text {
+  flex: 1;
+  font-family: 'Waiting for the Sunrise', cursive;
+  font-size: 1.1rem;
+  color: #37353f;
+  line-height: 1.5;
+}
+
+/* Custom checkbox */
+.paper-cb {
+  width: 15px;
+  height: 15px;
+  flex-shrink: 0;
+  border: 1.5px solid #37353f;
+  border-radius: 0 0 10px 1px / 1px 7px 1px 4px;
+  background: transparent;
+  cursor: pointer;
+  position: relative;
+  transition: background 0.2s;
+  padding: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.paper-cb--view { cursor: default; }
+
+.paper-cb--checked {
+  background: rgba(205, 220, 57, 0.8);
+}
+
+.paper-cb--checked::after {
+  content: "✓";
+  font-size: 1rem;
+  color: #37353f;
+  line-height: 1;
+  position: absolute;
+  top: -4px;
+  left: 1px;
+}
+
+/* Paper display */
+.paper-display {
+  height: 100%;
+  overflow: hidden;
+}
+
+.paper-display__title {
+  font-family: 'Waiting for the Sunrise', cursive;
+  font-size: 1.45rem;
+  font-weight: bold;
+  color: #37353f;
+  margin-bottom: 6px;
+}
+
+.paper-display__lines {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.paper-display__empty {
+  color: rgba(0,0,0,0.28);
+  font-style: italic;
+  font-size: 0.85rem;
+  font-family: 'Waiting for the Sunrise', cursive;
 }
 
 .paper-resize-corner {
