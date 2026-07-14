@@ -20,6 +20,7 @@ interface NoteData {
   hasPin: boolean; hasTape: boolean; pinColor: string; tapeColor: string;
   tapeImage: string;
   items: StickyItem[];
+  z: number;
 }
 
 type FrameKind = 'polaroid1' | 'polaroid2' | 'photostrip' | 'film';
@@ -31,11 +32,13 @@ interface PhotoFrameData {
   tapeImage: string;
   slotCount: number;
   showCan: boolean;
+  z: number;
 }
 
 interface ImageData {
   id: string; left: number; top: number; rotation: number; scale: number;
   imageUrl: string; width: number; height: number;
+  z: number;
 }
 
 interface ReceiptLineItem { id: string; name: string; qty: number; price: number }
@@ -46,6 +49,7 @@ interface ReceiptData {
   items: ReceiptLineItem[];
   tax: number;
   hasPin: boolean; hasTape: boolean; pinColor: string; tapeColor: string; tapeImage: string;
+  z: number;
 }
 
 type PaperLineType = 'text' | 'checkbox' | 'checkbox-sub' | 'important' | 'squiggly' | 'curved';
@@ -60,6 +64,7 @@ interface PaperData {
   title: string; lines: PaperLine[]; width: number; height: number;
   paperStyle: PaperStyle; paperColor: PaperColor; paperType: PaperType;
   hasPin: boolean; hasTape: boolean; pinColor: string; tapeColor: string; tapeImage: string;
+  z: number;
 }
 
 type BoardState = { notes: NoteData[]; frames: PhotoFrameData[]; receipts: ReceiptData[]; papers: PaperData[] };
@@ -212,7 +217,7 @@ async function syncNote(n: NoteData) {
     color: n.color, content: n.note,
     has_pin: n.hasPin, has_tape: n.hasTape,
     pin_color: n.pinColor, tape_color: n.tapeColor, tape_image: n.tapeImage, items: n.items,
-    scale: n.scale,
+    scale: n.scale, z: n.z,
   });
 }
 
@@ -222,7 +227,7 @@ async function syncFrame(f: PhotoFrameData) {
     photo_urls: f.photos, caption: f.caption,
     has_pin: f.hasPin, has_tape: f.hasTape,
     pin_color: f.pinColor, tape_color: f.tapeColor, tape_image: f.tapeImage, slot_count: f.slotCount,
-    scale: f.scale, show_can: f.showCan,
+    scale: f.scale, show_can: f.showCan, z: f.z,
   });
 }
 
@@ -233,6 +238,7 @@ async function syncReceipt(r: ReceiptData) {
     items: r.items, tax: r.tax,
     has_pin: r.hasPin, has_tape: r.hasTape,
     pin_color: r.pinColor, tape_color: r.tapeColor, tape_image: r.tapeImage,
+    z: r.z,
   });
 }
 
@@ -243,6 +249,7 @@ async function syncPaper(p: PaperData) {
     paper_style: p.paperStyle, paper_color: p.paperColor, paper_type: p.paperType,
     has_pin: p.hasPin, has_tape: p.hasTape,
     pin_color: p.pinColor, tape_color: p.tapeColor, tape_image: p.tapeImage,
+    z: p.z,
   });
 }
 
@@ -258,6 +265,7 @@ async function syncImage(img: ImageData) {
   await supabase.from('board_images').upsert({
     id: img.id, x: img.left, y: img.top, rotation: img.rotation, scale: img.scale,
     image_url: img.imageUrl, width: img.width, height: img.height,
+    z: img.z,
   });
 }
 
@@ -440,9 +448,11 @@ interface FrameCtxProps {
   onRemove: (id: string) => void;
   onEditCaption: (id: string) => void;
   onDuplicate: (frame: PhotoFrameData) => void;
+  onLayerUp: (id: string) => void;
+  onLayerDown: (id: string) => void;
 }
 
-function FrameContextMenu({ frame, x, y, onPatch, onRemove, onEditCaption, onDuplicate }: FrameCtxProps) {
+function FrameContextMenu({ frame, x, y, onPatch, onRemove, onEditCaption, onDuplicate, onLayerUp, onLayerDown }: FrameCtxProps) {
   const left = Math.min(x, window.innerWidth - 210);
   const top  = Math.min(y, window.innerHeight - 340);
   const isStripType = frame.kind === 'photostrip' || frame.kind === 'film';
@@ -477,6 +487,8 @@ function FrameContextMenu({ frame, x, y, onPatch, onRemove, onEditCaption, onDup
           onClick={() => onPatch(frame.id, { kind: frame.kind==='polaroid1'?'polaroid2':'polaroid1' })} />
       )}
       <CtxRow label="duplicate" onClick={() => onDuplicate(frame)} />
+      <CtxRow label="bring forward" onClick={() => onLayerUp(frame.id)} />
+      <CtxRow label="send backward" onClick={() => onLayerDown(frame.id)} />
       <CtxRow label="delete" danger onClick={() => onRemove(frame.id)} />
     </div>
   );
@@ -632,7 +644,7 @@ function Note({ data, isSelected, onSelect, onChange, onRemove, onDragEnd, onRot
   return (
     <div id={'note-'+data.id} className="note"
       style={{ left:data.left, top:data.top, backgroundColor:data.color, cursor:editing?'default':undefined,
-        overflow:'visible', transform:`rotate(${data.rotation}deg) scale(${data.scale})`, transformOrigin:'center center', zIndex:isSelected?50:'auto' }}
+        overflow:'visible', transform:`rotate(${data.rotation}deg) scale(${data.scale})`, transformOrigin:'center center', zIndex:isSelected?1000:(data.z||0)+10 }}
       onMouseDown={handleMD} onContextMenu={onContextMenu}>
 
       {isSelected && <SelectionOverlay elemId={'note-'+data.id} rotation={data.rotation} scale={data.scale} onRotate={r=>onRotateEnd(data.id,r)} onResize={s=>onResizeEnd(data.id,s)} />}
@@ -705,9 +717,11 @@ interface NoteCtxProps {
   onPatch: (id: string, p: Partial<NoteData>) => void;
   onRemove: (id: string) => void;
   onDuplicate: (note: NoteData) => void;
+  onLayerUp: (id: string) => void;
+  onLayerDown: (id: string) => void;
 }
 
-function NoteContextMenu({ note, x, y, onPatch, onRemove, onDuplicate }: NoteCtxProps) {
+function NoteContextMenu({ note, x, y, onPatch, onRemove, onDuplicate, onLayerUp, onLayerDown }: NoteCtxProps) {
   const left = Math.min(x, window.innerWidth - 210);
   const top  = Math.min(y, window.innerHeight - 280);
   return (
@@ -727,6 +741,8 @@ function NoteContextMenu({ note, x, y, onPatch, onRemove, onDuplicate }: NoteCtx
         onToggleOff={()=>onPatch(note.id,{hasPin:false})}
         submenu={colorSub<NoteData>(note.id,'pinColor',PIN_COLORS,note.hasPin,note.pinColor,onPatch)} />
       <CtxRow label="duplicate" onClick={() => onDuplicate(note)} />
+      <CtxRow label="bring forward" onClick={() => onLayerUp(note.id)} />
+      <CtxRow label="send backward" onClick={() => onLayerDown(note.id)} />
       <CtxRow label="delete" danger onClick={() => onRemove(note.id)} />
     </div>
   );
@@ -843,7 +859,7 @@ function ReceiptItem({ data, isSelected, onSelect, onContextMenu, onRemove, onDr
     <div id={'receipt-'+data.id}
       style={{ position:'absolute', left:data.left, top:data.top, cursor:'grab', userSelect:'none',
         transform:`rotate(${data.rotation}deg) scale(${data.scale})`, transformOrigin:'center center',
-        filter:'drop-shadow(3px 6px 12px rgba(0,0,0,0.35))', overflow:'visible', zIndex:isSelected?50:'auto' }}
+        filter:'drop-shadow(3px 6px 12px rgba(0,0,0,0.35))', overflow:'visible', zIndex:isSelected?1000:(data.z||0)+10 }}
       onMouseDown={handleMD} onContextMenu={onContextMenu}>
 
       {isSelected && <SelectionOverlay elemId={'receipt-'+data.id} rotation={data.rotation} scale={data.scale} onRotate={r=>onRotateEnd(data.id,r)} onResize={s=>onResizeEnd(data.id,s)} />}
@@ -899,9 +915,11 @@ interface ReceiptCtxProps {
   onRemove: (id: string) => void;
   onDuplicate: (r: ReceiptData) => void;
   onEdit: (id: string) => void;
+  onLayerUp: (id: string) => void;
+  onLayerDown: (id: string) => void;
 }
 
-function ReceiptContextMenu({ receipt, x, y, onPatch, onRemove, onDuplicate, onEdit }: ReceiptCtxProps) {
+function ReceiptContextMenu({ receipt, x, y, onPatch, onRemove, onDuplicate, onEdit, onLayerUp, onLayerDown }: ReceiptCtxProps) {
   const left = Math.min(x, window.innerWidth - 210);
   const top  = Math.min(y, window.innerHeight - 320);
   return (
@@ -923,6 +941,8 @@ function ReceiptContextMenu({ receipt, x, y, onPatch, onRemove, onDuplicate, onE
         onToggleOff={()=>onPatch(receipt.id,{hasPin:false})}
         submenu={colorSub<ReceiptData>(receipt.id,'pinColor',PIN_COLORS,receipt.hasPin,receipt.pinColor,onPatch)} />
       <CtxRow label="duplicate" onClick={() => onDuplicate(receipt)} />
+      <CtxRow label="bring forward" onClick={() => onLayerUp(receipt.id)} />
+      <CtxRow label="send backward" onClick={() => onLayerDown(receipt.id)} />
       <CtxRow label="delete" danger onClick={() => onRemove(receipt.id)} />
     </div>
   );
@@ -1199,7 +1219,7 @@ function PaperItem({ data, isSelected, onSelect, onContextMenu, onRemove, onSave
       style={{ position:'absolute', left:data.left, top:data.top, width:data.width, height:'auto', minHeight:data.height,
         cursor:editing?'default':'grab', userSelect:'none', transform:`rotate(${data.rotation}deg) scale(${data.scale})`,
         transformOrigin:'top left', filter:'drop-shadow(3px 6px 14px rgba(0,0,0,0.28))',
-        overflow:'visible', zIndex:isSelected?50:'auto' }}
+        overflow:'visible', zIndex:isSelected?1000:(data.z||0)+10 }}
       onMouseDown={handleMD} onContextMenu={onContextMenu}>
 
       {isSelected && <SelectionOverlay elemId={'paper-'+data.id} rotation={data.rotation} scale={data.scale} onRotate={r=>onRotateEnd(data.id,r)} onResize={s=>onResizeEnd(data.id,s)} />}
@@ -1293,9 +1313,11 @@ interface PaperCtxProps {
   onRemove: (id: string) => void;
   onDuplicate: (p: PaperData) => void;
   onEdit: (id: string) => void;
+  onLayerUp: (id: string) => void;
+  onLayerDown: (id: string) => void;
 }
 
-function PaperContextMenu({ paper, x, y, onPatch, onRemove, onDuplicate, onEdit }: PaperCtxProps) {
+function PaperContextMenu({ paper, x, y, onPatch, onRemove, onDuplicate, onEdit, onLayerUp, onLayerDown }: PaperCtxProps) {
   const [showKey, setShowKey] = useState(false);
   const left = Math.min(x, window.innerWidth - 240);
   const top  = Math.min(y, window.innerHeight - 360);
@@ -1349,6 +1371,8 @@ function PaperContextMenu({ paper, x, y, onPatch, onRemove, onDuplicate, onEdit 
         onToggleOff={()=>onPatch(paper.id,{hasPin:false})}
         submenu={colorSub<PaperData>(paper.id,'pinColor',PIN_COLORS,paper.hasPin,paper.pinColor,onPatch)} />
       <CtxRow label="duplicate" onClick={() => onDuplicate(paper)} />
+      <CtxRow label="bring forward" onClick={() => onLayerUp(paper.id)} />
+      <CtxRow label="send backward" onClick={() => onLayerDown(paper.id)} />
       <CtxRow label="delete" danger onClick={() => onRemove(paper.id)} />
       {showKey && (
         <div className="modal-backdrop" onClick={e=>{e.stopPropagation();setShowKey(false);}}>
@@ -1620,7 +1644,7 @@ function KeychainItem({ data, rings, onContextMenu, onDragEnd, onAttach, onDetac
   // Center the hook horizontally under the ring
   const displayLeft = attachedRing ? attachedRing.left + RING_CENTER - HOOK_W / 2 : data.left;
   // Position so the top of the hook overlaps the bottom of the ring
-  const displayTop = attachedRing ? attachedRing.top + RING_W * 0.4 : data.top;
+  const displayTop = attachedRing ? attachedRing.top + RING_W * 0.55 : data.top;
 
   const handleMD = (e: React.MouseEvent) => {
     e.preventDefault(); e.stopPropagation();
@@ -1701,11 +1725,13 @@ interface ImageCtxProps {
   onRemove: (id: string) => void;
   onDuplicate: (img: ImageData) => void;
   onChangeImage: (id: string) => void;
+  onLayerUp: (id: string) => void;
+  onLayerDown: (id: string) => void;
 }
 
-function ImageContextMenu({ img, x, y, onRemove, onDuplicate, onChangeImage }: ImageCtxProps) {
+function ImageContextMenu({ img, x, y, onRemove, onDuplicate, onChangeImage, onLayerUp, onLayerDown }: ImageCtxProps) {
   const left = Math.min(x, window.innerWidth - 210);
-  const top  = Math.min(y, window.innerHeight - 260);
+  const top  = Math.min(y, window.innerHeight - 280);
   return (
     <div className="ctx-menu" style={{ left, top }} onClick={e=>e.stopPropagation()}>
       <CtxRow label="change image" onClick={() => onChangeImage(img.id)} />
@@ -1713,25 +1739,29 @@ function ImageContextMenu({ img, x, y, onRemove, onDuplicate, onChangeImage }: I
       <CtxRow label="add frame" onClick={() => {}} />
       <CtxRow label="add filter" onClick={() => {}} />
       <CtxRow label="add texture" onClick={() => {}} />
+      <CtxRow label="bring forward" onClick={() => onLayerUp(img.id)} />
+      <CtxRow label="send backward" onClick={() => onLayerDown(img.id)} />
       <CtxRow label="duplicate" onClick={() => onDuplicate(img)} />
       <CtxRow label="delete" danger onClick={() => onRemove(img.id)} />
     </div>
   );
 }
 
-function ImageItem({ data, isSelected, onSelect, onContextMenu, onRemove, onDragEnd, onRotateEnd, onResizeEnd }: {
+function ImageItem({ data, isSelected, onSelect, onContextMenu, onRemove, onDragEnd, onRotateEnd, onResizeEnd, onPhotoChange }: {
   data: ImageData; isSelected: boolean;
   onSelect: () => void; onContextMenu: (e: React.MouseEvent) => void;
   onRemove: (id: string) => void;
   onDragEnd: (id: string, l: number, t: number) => void;
   onRotateEnd: (id: string, r: number) => void;
   onResizeEnd: (id: string, s: number) => void;
+  onPhotoChange: (id: string, url: string) => void;
 }) {
   const dragRef = useRef({ sX:0, sY:0, oL:0, oT:0 });
+  const fileRef = useRef<HTMLInputElement>(null);
 
   const handleMD = (e: React.MouseEvent<HTMLDivElement>) => {
     onSelect();
-    if ((e.target as HTMLElement).closest('button,.sel-rot-handle,.sel-resize-handle')) return;
+    if ((e.target as HTMLElement).closest('button,.sel-rot-handle,.sel-resize-handle,.image-slot-label')) return;
     e.preventDefault();
     dragRef.current = { sX:e.clientX, sY:e.clientY, oL:data.left, oT:data.top };
     const el = document.getElementById('img-'+data.id)!;
@@ -1744,7 +1774,7 @@ function ImageItem({ data, isSelected, onSelect, onContextMenu, onRemove, onDrag
     <div id={'img-'+data.id}
       style={{ position:'absolute', left:data.left, top:data.top, width:data.width, height:data.height,
         cursor:'grab', userSelect:'none', transform:`rotate(${data.rotation}deg) scale(${data.scale})`,
-        transformOrigin:'center center', filter:'drop-shadow(3px 6px 12px rgba(0,0,0,0.35))', overflow:'visible', zIndex:isSelected?50:'auto' }}
+        transformOrigin:'center center', filter:'drop-shadow(3px 6px 12px rgba(0,0,0,0.35))', overflow:'visible', zIndex:isSelected?1000:(data.z||0)+10 }}
       onMouseDown={handleMD} onContextMenu={onContextMenu}>
 
       {isSelected && <SelectionOverlay elemId={'img-'+data.id} rotation={data.rotation} scale={data.scale} onRotate={r=>onRotateEnd(data.id,r)} onResize={s=>onResizeEnd(data.id,s)} />}
@@ -1752,10 +1782,14 @@ function ImageItem({ data, isSelected, onSelect, onContextMenu, onRemove, onDrag
       {data.imageUrl ? (
         <img src={data.imageUrl} alt="" style={{ width:'100%', height:'100%', objectFit:'cover', display:'block', pointerEvents:'none', borderRadius:2 }} />
       ) : (
-        <div style={{ width:'100%', height:'100%', display:'flex', alignItems:'center', justifyContent:'center',
-          background:'rgba(255,255,255,0.85)', border:'2px dashed rgba(0,0,0,0.2)', borderRadius:2, color:'#888', fontSize:13 }}>
-          right-click → change image
-        </div>
+        <label className="image-slot-label" style={{ width:'100%', height:'100%', display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center', gap:8,
+          background:'#7f1d1d', borderRadius:4, cursor:'pointer', color:'#fff', userSelect:'none' }}
+          onMouseDown={e=>e.stopPropagation()}>
+          <Plus size={32} />
+          <span style={{ fontSize:13, fontFamily:'sans-serif' }}>click to add image</span>
+          <input ref={fileRef} type="file" accept="image/*" style={{ display:'none' }}
+            onChange={e => { const f=e.target.files?.[0]; if(!f) return; const r=new FileReader(); r.onload=()=>onPhotoChange(data.id, r.result as string); r.readAsDataURL(f); e.target.value=''; }} />
+        </label>
       )}
 
       <span className="note-controls" style={{ bottom:-18, right:0 }}>
@@ -1773,6 +1807,8 @@ export default function Board() {
   const [keyrings,   setKeyrings]   = useState<KeyringData[]>([]);
   const [keychains,  setKeychains]  = useState<KeychainData[]>([]);
   const [images,     setImages]     = useState<ImageData[]>([]);
+
+  const zCounter = useRef(0);
 
   const [selectedId, setSelectedId] = useState<string|null>(null);
   const [noteCtx,    setNoteCtx]    = useState<{v:boolean;x:number;y:number;id:string|null}>({v:false,x:0,y:0,id:null});
@@ -1841,6 +1877,9 @@ export default function Board() {
     const trySetHistory = () => {
       done++;
       if (done === 4) hist.current = [{ notes:loadedNotes, frames:loadedFrames, receipts:loadedReceipts, papers:loadedPapers }], histPtr.current = 0;
+      // Update zCounter to max z + 1 across all loaded items
+      const maxZ = Math.max(0, ...loadedNotes.map(n=>n.z), ...loadedFrames.map(f=>f.z), ...loadedReceipts.map(r=>r.z), ...loadedPapers.map(p=>p.z));
+      zCounter.current = maxZ;
     };
 
     supabase.from('sticky_notes').select('*').order('created_at').then(({ data }) => {
@@ -1850,6 +1889,7 @@ export default function Board() {
           color:n.color, note:n.content, hasPin:n.has_pin, hasTape:n.has_tape??false,
           pinColor:n.pin_color??PIN_DEFAULT, tapeColor:n.tape_color??'#fef08a',
           tapeImage:n.tape_image??'', items:n.items||[],
+          z:n.z??0,
         }));
         setNotes(loadedNotes);
       }
@@ -1863,6 +1903,7 @@ export default function Board() {
           photos:f.photo_urls??[], caption:f.caption??'', hasPin:f.has_pin??false, hasTape:f.has_tape??false,
           pinColor:f.pin_color??PIN_DEFAULT, tapeColor:f.tape_color??'#fef08a', tapeImage:f.tape_image??'',
           slotCount:f.slot_count??3, showCan:f.show_can??false,
+          z:f.z??0,
         }));
         setFrames(loadedFrames);
       }
@@ -1877,6 +1918,7 @@ export default function Board() {
           items:r.items??[], tax:r.tax??0,
           hasPin:r.has_pin??false, hasTape:r.has_tape??false,
           pinColor:r.pin_color??PIN_DEFAULT, tapeColor:r.tape_color??'#fef08a', tapeImage:r.tape_image??'',
+          z:r.z??0,
         }));
         setReceipts(loadedReceipts);
       }
@@ -1893,6 +1935,7 @@ export default function Board() {
           paperType:(p.paper_type??'notepad') as PaperType,
           hasPin:p.has_pin??false, hasTape:p.has_tape??false,
           pinColor:p.pin_color??PIN_DEFAULT, tapeColor:p.tape_color??'#fef08a', tapeImage:p.tape_image??'',
+          z:p.z??0,
         }));
         setPapers(loadedPapers);
       }
@@ -1906,7 +1949,7 @@ export default function Board() {
       if (data) setKeychains(data.map(c => ({ id:c.id, left:c.x, top:c.y, imageUrl:c.image_url??'', attachedRingId:c.attached_ring_id??null, imgOffsetX:c.img_offset_x??0, imgOffsetY:c.img_offset_y??0 })));
     });
     supabase.from('board_images').select('*').order('created_at').then(({ data }) => {
-      if (data) setImages(data.map(im => ({ id:im.id, left:im.x, top:im.y, rotation:im.rotation??0, scale:im.scale??1, imageUrl:im.image_url??'', width:im.width??200, height:im.height??240 })));
+      if (data) setImages(data.map(im => ({ id:im.id, left:im.x, top:im.y, rotation:im.rotation??0, scale:im.scale??1, imageUrl:im.image_url??'', width:im.width??200, height:im.height??240, z:im.z??0 })));
     });
   }, []);
 
@@ -1928,6 +1971,7 @@ export default function Board() {
         id:crypto.randomUUID(), left:rand(20,window.innerWidth-200), top:rand(60,window.innerHeight-220),
         rotation:rand(-3,3), scale:1, color:NOTE_COLORS[0], note:'new note',
         hasPin:false, hasTape:false, pinColor:PIN_DEFAULT, tapeColor:'#fef08a', tapeImage:'', items:[],
+        z: ++zCounter.current,
       };
       const updated = [...notes, n];
       pushHistory(updated, frames, receipts, papers); setNotes(updated); syncNote(n);
@@ -1937,6 +1981,7 @@ export default function Board() {
         rotation:rand(-2,2), scale:1, storeName:'My Store', logo:'🛒',
         date:new Date().toISOString().slice(0,10), items:[], tax:0,
         hasPin:false, hasTape:false, pinColor:PIN_DEFAULT, tapeColor:'#fef08a', tapeImage:'',
+        z: ++zCounter.current,
       };
       const updated = [...receipts, r];
       pushHistory(notes, frames, updated, papers); setReceipts(updated); syncReceipt(r);
@@ -1947,6 +1992,7 @@ export default function Board() {
         rotation:rand(-2,2), scale:1, title:'', lines:[], width:300, height:400,
         paperStyle:'lined', paperColor:'cream', paperType:'notepad',
         hasPin:false, hasTape:false, pinColor:PIN_DEFAULT, tapeColor:'#fef08a', tapeImage:'',
+        z: ++zCounter.current,
       };
       const updated = [...papers, p];
       pushHistory(notes, frames, receipts, updated); setPapers(updated); syncPaper(p);
@@ -1972,10 +2018,10 @@ export default function Board() {
         left: rand(20, window.innerWidth - 240),
         top: rand(60, window.innerHeight - 300),
         rotation: rand(-3, 3), scale: 1, imageUrl: '', width: 200, height: 240,
+        z: ++zCounter.current,
       };
       setImages(prev => [...prev, img]);
       syncImage(img);
-      setUploadImageId(img.id);
     } else {
       const isStrip = type==='photostrip' || type==='film';
       const dims = type==='film' ? getFilmConfig(3).dims : isStrip ? getStripConfig(3).dims : P1_DIMS;
@@ -1985,6 +2031,7 @@ export default function Board() {
         rotation:rand(-4,4), scale:1, photos:Array(isStrip?3:1).fill(''),
         caption:'', hasPin:false, hasTape:false,
         pinColor:PIN_DEFAULT, tapeColor:'#fef08a', tapeImage:'', slotCount:3, showCan:false,
+        z: ++zCounter.current,
       };
       const updated = [...frames, f];
       pushHistory(notes, updated, receipts, papers); setFrames(updated); syncFrame(f);
@@ -2289,6 +2336,24 @@ export default function Board() {
     setImageCtx(m=>({...m,v:false}));
   };
 
+  // ── Layering handlers ──
+  const layerUp = (type: 'note'|'frame'|'receipt'|'paper'|'image', id: string) => {
+    const z = ++zCounter.current;
+    if (type==='note')   { const u = notes.map(n=>n.id===id?{...n,z}:n);   setNotes(u);   const n=u.find(n=>n.id===id); if(n) syncNote(n); }
+    if (type==='frame')  { const u = frames.map(f=>f.id===id?{...f,z}:f);  setFrames(u);  const f=u.find(f=>f.id===id); if(f) syncFrame(f); }
+    if (type==='receipt'){ const u = receipts.map(r=>r.id===id?{...r,z}:r); setReceipts(u); const r=u.find(r=>r.id===id); if(r) syncReceipt(r); }
+    if (type==='paper')  { const u = papers.map(p=>p.id===id?{...p,z}:p);  setPapers(u);  const p=u.find(p=>p.id===id); if(p) syncPaper(p); }
+    if (type==='image')  { const u = images.map(im=>im.id===id?{...im,z}:im); setImages(u); const im=u.find(im=>im.id===id); if(im) syncImage(im); }
+  };
+  const layerDown = (type: 'note'|'frame'|'receipt'|'paper'|'image', id: string) => {
+    const z = zCounter.current = Math.max(0, zCounter.current - 1);
+    if (type==='note')   { const u = notes.map(n=>n.id===id?{...n,z}:n);   setNotes(u);   const n=u.find(n=>n.id===id); if(n) syncNote(n); }
+    if (type==='frame')  { const u = frames.map(f=>f.id===id?{...f,z}:f);  setFrames(u);  const f=u.find(f=>f.id===id); if(f) syncFrame(f); }
+    if (type==='receipt'){ const u = receipts.map(r=>r.id===id?{...r,z}:r); setReceipts(u); const r=u.find(r=>r.id===id); if(r) syncReceipt(r); }
+    if (type==='paper')  { const u = papers.map(p=>p.id===id?{...p,z}:p);  setPapers(u);  const p=u.find(p=>p.id===id); if(p) syncPaper(p); }
+    if (type==='image')  { const u = images.map(im=>im.id===id?{...im,z}:im); setImages(u); const im=u.find(im=>im.id===id); if(im) syncImage(im); }
+  };
+
   const activeNote    = noteCtx.id    ? notes.find(n=>n.id===noteCtx.id)       : null;
   const activeFrame   = frameCtx.id   ? frames.find(f=>f.id===frameCtx.id)     : null;
   const activeReceipt = receiptCtx.id ? receipts.find(r=>r.id===receiptCtx.id) : null;
@@ -2352,7 +2417,8 @@ export default function Board() {
           onSelect={() => setSelectedId(im.id)}
           onContextMenu={e => { e.preventDefault(); e.stopPropagation(); setSelectedId(im.id); setImageCtx({v:true,x:e.clientX,y:e.clientY,id:im.id}); }}
           onRemove={removeImage}
-          onDragEnd={imageDragEnd} onRotateEnd={imageRotateEnd} onResizeEnd={imageResizeEnd} />
+          onDragEnd={imageDragEnd} onRotateEnd={imageRotateEnd} onResizeEnd={imageResizeEnd}
+          onPhotoChange={(id, url) => updateImageFile(id, url)} />
       ))}
 
       {/* Keychain bodies — rendered BELOW the rings in z-order (z-index 25) */}
@@ -2379,28 +2445,33 @@ export default function Board() {
 
       {noteCtx.v && activeNote && (
         <NoteContextMenu note={activeNote} x={noteCtx.x} y={noteCtx.y}
-          onPatch={patchNote} onRemove={removeNote} onDuplicate={duplicateNote} />
+          onPatch={patchNote} onRemove={removeNote} onDuplicate={duplicateNote}
+          onLayerUp={id => layerUp('note', id)} onLayerDown={id => layerDown('note', id)} />
       )}
       {frameCtx.v && activeFrame && (
         <FrameContextMenu frame={activeFrame} x={frameCtx.x} y={frameCtx.y}
           onPatch={patchFrame} onRemove={removeFrame}
           onEditCaption={id => { setEditCapId(id); setFrameCtx(m=>({...m,v:false})); }}
-          onDuplicate={duplicateFrame} />
+          onDuplicate={duplicateFrame}
+          onLayerUp={id => layerUp('frame', id)} onLayerDown={id => layerDown('frame', id)} />
       )}
       {receiptCtx.v && activeReceipt && (
         <ReceiptContextMenu receipt={activeReceipt} x={receiptCtx.x} y={receiptCtx.y}
           onPatch={patchReceipt} onRemove={removeReceipt} onDuplicate={duplicateReceipt}
-          onEdit={id => { setEditReceiptId(id); setReceiptCtx(m=>({...m,v:false})); }} />
+          onEdit={id => { setEditReceiptId(id); setReceiptCtx(m=>({...m,v:false})); }}
+          onLayerUp={id => layerUp('receipt', id)} onLayerDown={id => layerDown('receipt', id)} />
       )}
       {paperCtx.v && activePaper && (
         <PaperContextMenu paper={activePaper} x={paperCtx.x} y={paperCtx.y}
           onPatch={patchPaper} onRemove={removePaper} onDuplicate={duplicatePaper}
-          onEdit={id => { setEditPaperId(id); setPaperCtx(m=>({...m,v:false})); }} />
+          onEdit={id => { setEditPaperId(id); setPaperCtx(m=>({...m,v:false})); }}
+          onLayerUp={id => layerUp('paper', id)} onLayerDown={id => layerDown('paper', id)} />
       )}
       {imageCtx.v && activeImage && (
         <ImageContextMenu img={activeImage} x={imageCtx.x} y={imageCtx.y}
           onRemove={removeImage} onDuplicate={duplicateImage}
-          onChangeImage={id => { setUploadImageId(id); setImageCtx(m=>({...m,v:false})); }} />
+          onChangeImage={id => { setUploadImageId(id); setImageCtx(m=>({...m,v:false})); }}
+          onLayerUp={id => layerUp('image', id)} onLayerDown={id => layerDown('image', id)} />
       )}
       {ringCtx.v && activeRing && (
         <KeyringContextMenu ring={activeRing} x={ringCtx.x} y={ringCtx.y}
