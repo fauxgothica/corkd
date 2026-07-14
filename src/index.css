@@ -133,6 +133,27 @@ body, html {
 }
 
 /* ── Add button & menu ─────────────────────────────────────────── */
+.add-btn-rect {
+  padding: 6px 14px;
+  font-family: 'Courier New', monospace;
+  font-size: 13px;
+  font-weight: 600;
+  color: #1a1a1a;
+  background: rgba(255,255,255,0.9);
+  border: 1.5px solid #1a1a1a;
+  border-radius: 3px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  white-space: nowrap;
+}
+.add-btn-rect:hover {
+  background: rgba(255,255,255,1);
+  box-shadow: 1px 2px 8px rgba(0,0,0,0.15);
+}
+.add-btn-rect:active {
+  transform: translateY(1px);
+}
+
 .add-btn {
   font-size: 1.5em;
   cursor: pointer;
@@ -933,8 +954,12 @@ div[id^="frame-"]:hover .frame-remove-btn {
 .ctx-swatch-btn--active { outline: 2.5px solid #444; outline-offset: 2px; border-radius: 50%; }
 
 .ctx-submenu--nested {
-  min-width: 140px;
+  min-width: 170px;
   padding: 4px 0 !important;
+  background: rgba(255,251,230,0.95);
+  border: 1.5px solid rgba(0,0,0,0.18);
+  border-radius: 4px;
+  box-shadow: 3px 4px 18px rgba(0,0,0,0.22);
 }
 
 /* ── Note key popup ───────────────────────────────────────────── */

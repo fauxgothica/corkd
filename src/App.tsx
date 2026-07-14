@@ -3,7 +3,7 @@ import { createClient } from '@supabase/supabase-js';
 import {
   Check, Circle, Trash2, ChevronRight, Plus,
   StickyNote, Image, Film, RotateCw, Undo2, Redo2, Upload, Maximize2,
-  Receipt, FileText, X, Link, ImageIcon, Sparkles,
+  Receipt, FileText, X, Link, ImageIcon,
 } from 'lucide-react';
 
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL || 'https://0ec90b57d6e95fcbda19832f.supabase.co';
@@ -373,6 +373,14 @@ function SelectionOverlay({ elemId, rotation, scale, onRotate, onResize }: SelOv
   );
 }
 
+function darken2(hex: string, amount: number): string {
+  const c = hex.replace('#','');
+  const r = Math.round(parseInt(c.slice(0,2),16) * (1-amount));
+  const g = Math.round(parseInt(c.slice(2,4),16) * (1-amount));
+  const b = Math.round(parseInt(c.slice(4,6),16) * (1-amount));
+  return `rgb(${r},${g},${b})`;
+}
+
 // ─── CtxRow ───────────────────────────────────────────────────────────────────
 
 interface CtxRowProps {
@@ -498,12 +506,12 @@ function FrameContextMenu({ frame, x, y, onPatch, onRemove, onEditCaption, onDup
       )}
       <CtxRow label="duplicate" onClick={() => onDuplicate(frame)} />
       <CtxRow label="layers" submenu={
-        <>
+        <div className="ctx-submenu ctx-submenu--nested">
           <CtxRow label="bring forward" onClick={() => onLayerUp(frame.id)} />
           <CtxRow label="bring to front" onClick={() => onLayerToFront(frame.id)} />
           <CtxRow label="send backward" onClick={() => onLayerDown(frame.id)} />
           <CtxRow label="send to back" onClick={() => onLayerToBack(frame.id)} />
-        </>
+        </div>
       } />
       <CtxRow label="delete" danger onClick={() => onRemove(frame.id)} />
     </div>
@@ -760,12 +768,12 @@ function NoteContextMenu({ note, x, y, onPatch, onRemove, onDuplicate, onLayerUp
         submenu={colorSub<NoteData>(note.id,'pinColor',PIN_COLORS,note.hasPin,note.pinColor,onPatch)} />
       <CtxRow label="duplicate" onClick={() => onDuplicate(note)} />
       <CtxRow label="layers" submenu={
-        <>
+        <div className="ctx-submenu ctx-submenu--nested">
           <CtxRow label="bring forward" onClick={() => onLayerUp(note.id)} />
           <CtxRow label="bring to front" onClick={() => onLayerToFront(note.id)} />
           <CtxRow label="send backward" onClick={() => onLayerDown(note.id)} />
           <CtxRow label="send to back" onClick={() => onLayerToBack(note.id)} />
-        </>
+        </div>
       } />
       <CtxRow label="delete" danger onClick={() => onRemove(note.id)} />
     </div>
@@ -968,12 +976,12 @@ function ReceiptContextMenu({ receipt, x, y, onPatch, onRemove, onDuplicate, onE
         submenu={colorSub<ReceiptData>(receipt.id,'pinColor',PIN_COLORS,receipt.hasPin,receipt.pinColor,onPatch)} />
       <CtxRow label="duplicate" onClick={() => onDuplicate(receipt)} />
       <CtxRow label="layers" submenu={
-        <>
+        <div className="ctx-submenu ctx-submenu--nested">
           <CtxRow label="bring forward" onClick={() => onLayerUp(receipt.id)} />
           <CtxRow label="bring to front" onClick={() => onLayerToFront(receipt.id)} />
           <CtxRow label="send backward" onClick={() => onLayerDown(receipt.id)} />
           <CtxRow label="send to back" onClick={() => onLayerToBack(receipt.id)} />
-        </>
+        </div>
       } />
       <CtxRow label="delete" danger onClick={() => onRemove(receipt.id)} />
     </div>
@@ -1309,7 +1317,7 @@ function PaperItem({ data, isSelected, onSelect, onContextMenu, onRemove, onSave
         overflow:'visible', zIndex:isSelected?1000:(data.z||0)+10 }}
       onMouseDown={handleMD} onContextMenu={onContextMenu}>
 
-      {isSelected && <div style={{ position:'absolute', top:0, left:0, width:'100%', height:data.height, pointerEvents:'none', zIndex:17 }}>
+      {isSelected && <div style={{ position:'absolute', top:0, left:0, right:0, bottom:0, pointerEvents:'none', zIndex:17 }}>
         <SelectionOverlay elemId={'paper-'+data.id} rotation={data.rotation} scale={data.scale} onRotate={r=>onRotateEnd(data.id,r)} onResize={s=>onResizeEnd(data.id,s)} />
       </div>}
       <Decorations hasPin={data.hasPin} hasTape={data.hasTape} pinColor={data.pinColor} tapeColor={data.tapeColor} tapeImage={data.tapeImage} />
@@ -1465,12 +1473,12 @@ function PaperContextMenu({ paper, x, y, onPatch, onRemove, onDuplicate, onEdit,
         submenu={colorSub<PaperData>(paper.id,'pinColor',PIN_COLORS,paper.hasPin,paper.pinColor,onPatch)} />
       <CtxRow label="duplicate" onClick={() => onDuplicate(paper)} />
       <CtxRow label="layers" submenu={
-        <>
+        <div className="ctx-submenu ctx-submenu--nested">
           <CtxRow label="bring forward" onClick={() => onLayerUp(paper.id)} />
           <CtxRow label="bring to front" onClick={() => onLayerToFront(paper.id)} />
           <CtxRow label="send backward" onClick={() => onLayerDown(paper.id)} />
           <CtxRow label="send to back" onClick={() => onLayerToBack(paper.id)} />
-        </>
+        </div>
       } />
       <CtxRow label="delete" danger onClick={() => onRemove(paper.id)} />
       {showKey && (
@@ -1516,16 +1524,16 @@ function AddMenu({ onAdd }: { onAdd: (t: AddType) => void }) {
 
   return (
     <div style={{ position:'fixed', top:10, right:10, zIndex:200, display:'flex', gap:8 }}>
-      <button className="add-btn" style={{ width:'auto', padding:'0 14px', fontSize:13, fontWeight:500, gap:6, display:'flex', alignItems:'center' }}
-        onClick={e=>{e.stopPropagation();setWhich(w=>w==='objects'?null:'objects');}} title="Add objects">
-        <Plus size={16} /><span>add objects</span>
-      </button>
-      <button className="add-btn" style={{ width:'auto', padding:'0 14px', fontSize:13, fontWeight:500, gap:6, display:'flex', alignItems:'center' }}
+      <button className="add-btn-rect"
         onClick={e=>{e.stopPropagation();setWhich(w=>w==='decorations'?null:'decorations');}} title="Decorations">
-        <Sparkles size={16} /><span>decorations</span>
+        decorations
+      </button>
+      <button className="add-btn-rect"
+        onClick={e=>{e.stopPropagation();setWhich(w=>w==='objects'?null:'objects');}} title="Add objects">
+        add objects
       </button>
       {which && (
-        <div className="add-menu" style={{ right: which==='decorations' ? 0 : 'auto', left: which==='objects' ? 0 : 'auto', top: 48 }}
+        <div className="add-menu" style={{ right: which==='objects' ? 0 : 'auto', left: which==='objects' ? 'auto' : 0, top: 48 }}
           onClick={e=>e.stopPropagation()}>
           {(which==='objects'?objectItems:decoItems).map(([t,label,icon]) => (
             <button key={t} className="add-menu-item" onClick={()=>{onAdd(t);setWhich(null);}}>
@@ -1845,67 +1853,67 @@ function ImageContextMenu({ img, x, y, onRemove, onDuplicate, onChangeImage, onP
   const left = Math.min(x, window.innerWidth - 210);
   const top  = Math.min(y, window.innerHeight - 320);
   const BORDER_COLORS = ['#000000','#ffffff','#7f1d1d','#1e3a5f','#4d7c0f','#78350f'];
-  const FRAME_STYLES  = ['wood','metal','plastic','ornate'];
-  const FILTER_STYLES = ['sepia','grayscale','vintage','warm','cool','dramatic'];
-  const TEXTURE_STYLES= ['canvas','paper','grain','linen'];
+  const FRAME_STYLES: [string, string][] = [['wood','#8b6914'],['metal','#a0a0a0'],['plastic','#e8e8e8'],['ornate','#c9a84c']];
+  const FILTER_STYLES: [string, string][] = [['sepia','#c4a46c'],['grayscale','#9a9a9a'],['vintage','#c9b07a'],['warm','#e8a050'],['cool','#5a9aaa'],['dramatic','#1a1a2e']];
+  const TEXTURE_STYLES: [string, string][] = [['canvas','#d4c4a8'],['paper','#f5f0e0'],['grain','#c9c0b0'],['linen','#e8dcc8']];
   return (
     <div className="ctx-menu" style={{ left, top }} onClick={e=>e.stopPropagation()}>
       <CtxRow label="change image" onClick={() => onChangeImage(img.id)} />
-      <CtxRow label="add border" toggle checked={img.hasBorder}
+      <CtxRow label="border" toggle checked={img.hasBorder}
+        onToggleOn={()=>onPatch(img.id,{hasBorder:true,borderColor:BORDER_COLORS[0]})}
+        onToggleOff={()=>onPatch(img.id,{hasBorder:false})}
         submenu={
-          <>
+          <div className="ctx-submenu">
             {BORDER_COLORS.map(c => (
-              <CtxRow key={c} label={c}
-                checked={img.borderColor===c}
+              <button key={c} className="ctx-color-dot"
+                style={{ background:c, outline: img.hasBorder&&img.borderColor===c?`2px solid ${darken2(c,0.5)}`:'none' }}
                 onClick={() => onPatch(img.id, { hasBorder:true, borderColor:c })} />
             ))}
-          </>
-        }
-        onToggleOn={() => onPatch(img.id, { hasBorder:true, borderColor:BORDER_COLORS[0] })}
-        onToggleOff={() => onPatch(img.id, { hasBorder:false })} />
-      <CtxRow label="add frame" toggle checked={img.hasFrame}
+          </div>
+        } />
+      <CtxRow label="frame" toggle checked={img.hasFrame}
+        onToggleOn={()=>onPatch(img.id,{hasFrame:true,frameStyle:FRAME_STYLES[0][0]})}
+        onToggleOff={()=>onPatch(img.id,{hasFrame:false})}
         submenu={
-          <>
-            {FRAME_STYLES.map(s => (
-              <CtxRow key={s} label={s}
-                checked={img.frameStyle===s}
+          <div className="ctx-submenu">
+            {FRAME_STYLES.map(([s,c]) => (
+              <button key={s} className="ctx-color-dot"
+                style={{ background:c, outline: img.hasFrame&&img.frameStyle===s?`2px solid ${darken2(c,0.5)}`:'none' }}
                 onClick={() => onPatch(img.id, { hasFrame:true, frameStyle:s })} />
             ))}
-          </>
-        }
-        onToggleOn={() => onPatch(img.id, { hasFrame:true, frameStyle:FRAME_STYLES[0] })}
-        onToggleOff={() => onPatch(img.id, { hasFrame:false })} />
-      <CtxRow label="add filter" toggle checked={img.hasFilter}
+          </div>
+        } />
+      <CtxRow label="filter" toggle checked={img.hasFilter}
+        onToggleOn={()=>onPatch(img.id,{hasFilter:true,filterStyle:FILTER_STYLES[0][0]})}
+        onToggleOff={()=>onPatch(img.id,{hasFilter:false})}
         submenu={
-          <>
-            {FILTER_STYLES.map(s => (
-              <CtxRow key={s} label={s}
-                checked={img.filterStyle===s}
+          <div className="ctx-submenu">
+            {FILTER_STYLES.map(([s,c]) => (
+              <button key={s} className="ctx-color-dot"
+                style={{ background:c, outline: img.hasFilter&&img.filterStyle===s?`2px solid ${darken2(c,0.5)}`:'none' }}
                 onClick={() => onPatch(img.id, { hasFilter:true, filterStyle:s })} />
             ))}
-          </>
-        }
-        onToggleOn={() => onPatch(img.id, { hasFilter:true, filterStyle:FILTER_STYLES[0] })}
-        onToggleOff={() => onPatch(img.id, { hasFilter:false })} />
-      <CtxRow label="add texture" toggle checked={img.hasTexture}
+          </div>
+        } />
+      <CtxRow label="texture" toggle checked={img.hasTexture}
+        onToggleOn={()=>onPatch(img.id,{hasTexture:true,textureStyle:TEXTURE_STYLES[0][0]})}
+        onToggleOff={()=>onPatch(img.id,{hasTexture:false})}
         submenu={
-          <>
-            {TEXTURE_STYLES.map(s => (
-              <CtxRow key={s} label={s}
-                checked={img.textureStyle===s}
+          <div className="ctx-submenu">
+            {TEXTURE_STYLES.map(([s,c]) => (
+              <button key={s} className="ctx-color-dot"
+                style={{ background:c, outline: img.hasTexture&&img.textureStyle===s?`2px solid ${darken2(c,0.5)}`:'none' }}
                 onClick={() => onPatch(img.id, { hasTexture:true, textureStyle:s })} />
             ))}
-          </>
-        }
-        onToggleOn={() => onPatch(img.id, { hasTexture:true, textureStyle:TEXTURE_STYLES[0] })}
-        onToggleOff={() => onPatch(img.id, { hasTexture:false })} />
+          </div>
+        } />
       <CtxRow label="layers" submenu={
-        <>
+        <div className="ctx-submenu ctx-submenu--nested">
           <CtxRow label="bring forward" onClick={() => onLayerUp(img.id)} />
           <CtxRow label="bring to front" onClick={() => onLayerToFront(img.id)} />
           <CtxRow label="send backward" onClick={() => onLayerDown(img.id)} />
           <CtxRow label="send to back" onClick={() => onLayerToBack(img.id)} />
-        </>
+        </div>
       } />
       <CtxRow label="duplicate" onClick={() => onDuplicate(img)} />
       <CtxRow label="delete" danger onClick={() => onRemove(img.id)} />
@@ -2574,7 +2582,14 @@ export default function Board() {
     <div className="board"
       style={{ width:'100%', height:'100%', position:'relative', overflow:'hidden',
         background:"url('/cork.jpeg') no-repeat center center fixed", backgroundSize:'cover' }}
-      onClick={() => { setSelectedId(null); setRingCtx(m=>({...m,v:false})); setChainCtx(m=>({...m,v:false})); }}>
+      onClick={() => { setSelectedId(null); setRingCtx(m=>({...m,v:false})); setChainCtx(m=>({...m,v:false})); }}
+      onContextMenu={e => {
+        e.preventDefault();
+        setNoteCtx(m=>({...m,v:false})); setFrameCtx(m=>({...m,v:false}));
+        setReceiptCtx(m=>({...m,v:false})); setPaperCtx(m=>({...m,v:false}));
+        setImageCtx(m=>({...m,v:false})); setRingCtx(m=>({...m,v:false})); setChainCtx(m=>({...m,v:false}));
+        setSelectedId(null);
+      }}>
 
       {notes.map(n => (
         <Note key={n.id} data={n} isSelected={selectedId===n.id}
