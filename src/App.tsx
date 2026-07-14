@@ -3,7 +3,7 @@ import { createClient } from '@supabase/supabase-js';
 import {
   Check, Circle, Trash2, ChevronRight, Plus,
   StickyNote, Image, Film, RotateCw, Undo2, Redo2, Upload, Maximize2,
-  Receipt, FileText, X, Link, ImageIcon,
+  Receipt, FileText, X, Link, ImageIcon, Sparkles,
 } from 'lucide-react';
 
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL || 'https://0ec90b57d6e95fcbda19832f.supabase.co';
@@ -39,6 +39,10 @@ interface ImageData {
   id: string; left: number; top: number; rotation: number; scale: number;
   imageUrl: string; width: number; height: number;
   z: number;
+  hasBorder: boolean; borderColor: string;
+  hasFrame: boolean; frameStyle: string;
+  hasFilter: boolean; filterStyle: string;
+  hasTexture: boolean; textureStyle: string;
 }
 
 interface ReceiptLineItem { id: string; name: string; qty: number; price: number }
@@ -53,7 +57,7 @@ interface ReceiptData {
 }
 
 type PaperLineType = 'text' | 'checkbox' | 'checkbox-sub' | 'important' | 'squiggly' | 'curved';
-interface PaperLine { id: string; type: PaperLineType; text: string; checked: boolean }
+interface PaperLine { id: string; type: PaperLineType; text: string; checked: boolean; indent: number }
 
 type PaperStyle = 'lined' | 'dotted' | 'grid' | 'plain' | 'ancient';
 type PaperColor = 'cream' | 'yellow' | 'blue' | 'pink' | 'green' | 'white';
@@ -266,6 +270,10 @@ async function syncImage(img: ImageData) {
     id: img.id, x: img.left, y: img.top, rotation: img.rotation, scale: img.scale,
     image_url: img.imageUrl, width: img.width, height: img.height,
     z: img.z,
+    has_border: img.hasBorder, border_color: img.borderColor,
+    has_frame: img.hasFrame, frame_style: img.frameStyle,
+    has_filter: img.hasFilter, filter_style: img.filterStyle,
+    has_texture: img.hasTexture, texture_style: img.textureStyle,
   });
 }
 
@@ -432,7 +440,7 @@ function Decorations({ hasPin, hasTape, pinColor, tapeColor, tapeImage }: {
         </div>
       )}
       {hasPin && (
-        <div style={{ position:'absolute', top:'-18px', left:'50%', transform:'translateX(-50%)', width:32, height:56, pointerEvents:'none', zIndex:6, filter:'drop-shadow(1px 3px 4px rgba(0,0,0,0.45))' }}>
+        <div style={{ position:'absolute', top:'-17px', left:'50%', transform:'translateX(-50%)', width:32, height:56, pointerEvents:'none', zIndex:6, filter:'drop-shadow(1px 3px 4px rgba(0,0,0,0.45))' }}>
           <PinSvg color={pinColor} />
         </div>
       )}
@@ -450,9 +458,11 @@ interface FrameCtxProps {
   onDuplicate: (frame: PhotoFrameData) => void;
   onLayerUp: (id: string) => void;
   onLayerDown: (id: string) => void;
+  onLayerToFront: (id: string) => void;
+  onLayerToBack: (id: string) => void;
 }
 
-function FrameContextMenu({ frame, x, y, onPatch, onRemove, onEditCaption, onDuplicate, onLayerUp, onLayerDown }: FrameCtxProps) {
+function FrameContextMenu({ frame, x, y, onPatch, onRemove, onEditCaption, onDuplicate, onLayerUp, onLayerDown, onLayerToFront, onLayerToBack }: FrameCtxProps) {
   const left = Math.min(x, window.innerWidth - 210);
   const top  = Math.min(y, window.innerHeight - 340);
   const isStripType = frame.kind === 'photostrip' || frame.kind === 'film';
@@ -487,8 +497,14 @@ function FrameContextMenu({ frame, x, y, onPatch, onRemove, onEditCaption, onDup
           onClick={() => onPatch(frame.id, { kind: frame.kind==='polaroid1'?'polaroid2':'polaroid1' })} />
       )}
       <CtxRow label="duplicate" onClick={() => onDuplicate(frame)} />
-      <CtxRow label="bring forward" onClick={() => onLayerUp(frame.id)} />
-      <CtxRow label="send backward" onClick={() => onLayerDown(frame.id)} />
+      <CtxRow label="layers" submenu={
+        <>
+          <CtxRow label="bring forward" onClick={() => onLayerUp(frame.id)} />
+          <CtxRow label="bring to front" onClick={() => onLayerToFront(frame.id)} />
+          <CtxRow label="send backward" onClick={() => onLayerDown(frame.id)} />
+          <CtxRow label="send to back" onClick={() => onLayerToBack(frame.id)} />
+        </>
+      } />
       <CtxRow label="delete" danger onClick={() => onRemove(frame.id)} />
     </div>
   );
@@ -719,9 +735,11 @@ interface NoteCtxProps {
   onDuplicate: (note: NoteData) => void;
   onLayerUp: (id: string) => void;
   onLayerDown: (id: string) => void;
+  onLayerToFront: (id: string) => void;
+  onLayerToBack: (id: string) => void;
 }
 
-function NoteContextMenu({ note, x, y, onPatch, onRemove, onDuplicate, onLayerUp, onLayerDown }: NoteCtxProps) {
+function NoteContextMenu({ note, x, y, onPatch, onRemove, onDuplicate, onLayerUp, onLayerDown, onLayerToFront, onLayerToBack }: NoteCtxProps) {
   const left = Math.min(x, window.innerWidth - 210);
   const top  = Math.min(y, window.innerHeight - 280);
   return (
@@ -741,8 +759,14 @@ function NoteContextMenu({ note, x, y, onPatch, onRemove, onDuplicate, onLayerUp
         onToggleOff={()=>onPatch(note.id,{hasPin:false})}
         submenu={colorSub<NoteData>(note.id,'pinColor',PIN_COLORS,note.hasPin,note.pinColor,onPatch)} />
       <CtxRow label="duplicate" onClick={() => onDuplicate(note)} />
-      <CtxRow label="bring forward" onClick={() => onLayerUp(note.id)} />
-      <CtxRow label="send backward" onClick={() => onLayerDown(note.id)} />
+      <CtxRow label="layers" submenu={
+        <>
+          <CtxRow label="bring forward" onClick={() => onLayerUp(note.id)} />
+          <CtxRow label="bring to front" onClick={() => onLayerToFront(note.id)} />
+          <CtxRow label="send backward" onClick={() => onLayerDown(note.id)} />
+          <CtxRow label="send to back" onClick={() => onLayerToBack(note.id)} />
+        </>
+      } />
       <CtxRow label="delete" danger onClick={() => onRemove(note.id)} />
     </div>
   );
@@ -917,9 +941,11 @@ interface ReceiptCtxProps {
   onEdit: (id: string) => void;
   onLayerUp: (id: string) => void;
   onLayerDown: (id: string) => void;
+  onLayerToFront: (id: string) => void;
+  onLayerToBack: (id: string) => void;
 }
 
-function ReceiptContextMenu({ receipt, x, y, onPatch, onRemove, onDuplicate, onEdit, onLayerUp, onLayerDown }: ReceiptCtxProps) {
+function ReceiptContextMenu({ receipt, x, y, onPatch, onRemove, onDuplicate, onEdit, onLayerUp, onLayerDown, onLayerToFront, onLayerToBack }: ReceiptCtxProps) {
   const left = Math.min(x, window.innerWidth - 210);
   const top  = Math.min(y, window.innerHeight - 320);
   return (
@@ -941,8 +967,14 @@ function ReceiptContextMenu({ receipt, x, y, onPatch, onRemove, onDuplicate, onE
         onToggleOff={()=>onPatch(receipt.id,{hasPin:false})}
         submenu={colorSub<ReceiptData>(receipt.id,'pinColor',PIN_COLORS,receipt.hasPin,receipt.pinColor,onPatch)} />
       <CtxRow label="duplicate" onClick={() => onDuplicate(receipt)} />
-      <CtxRow label="bring forward" onClick={() => onLayerUp(receipt.id)} />
-      <CtxRow label="send backward" onClick={() => onLayerDown(receipt.id)} />
+      <CtxRow label="layers" submenu={
+        <>
+          <CtxRow label="bring forward" onClick={() => onLayerUp(receipt.id)} />
+          <CtxRow label="bring to front" onClick={() => onLayerToFront(receipt.id)} />
+          <CtxRow label="send backward" onClick={() => onLayerDown(receipt.id)} />
+          <CtxRow label="send to back" onClick={() => onLayerToBack(receipt.id)} />
+        </>
+      } />
       <CtxRow label="delete" danger onClick={() => onRemove(receipt.id)} />
     </div>
   );
@@ -1000,7 +1032,7 @@ function getPaperTypeClass(type: PaperType) {
 // ─── Sheet of Paper ───────────────────────────────────────────────────────────
 
 function newLine(type: PaperLineType = 'text'): PaperLine {
-  return { id: crypto.randomUUID(), type, text: '', checked: false };
+  return { id: crypto.randomUUID(), type, text: '', checked: false, indent: 0 };
 }
 
 function PaperEditor({ title: initTitle, lines: initLines, onSave, onCancel }: {
@@ -1022,11 +1054,53 @@ function PaperEditor({ title: initTitle, lines: initLines, onSave, onCancel }: {
     setLines(ls => {
       const i = ls.findIndex(l => l.id === id);
       if (i < 0) return ls;
-      const next = i + dir;
-      if (next < 0 || next >= ls.length) return ls;
-      const arr = [...ls];
-      [arr[i], arr[next]] = [arr[next], arr[i]];
+      // Gather the line and its subtask group (consecutive lines with higher indent)
+      const baseIndent = ls[i].indent;
+      let groupEnd = i + 1;
+      while (groupEnd < ls.length && ls[groupEnd].indent > baseIndent) groupEnd++;
+      const target = dir === -1 ? i - 1 : groupEnd;
+      if (target < 0 || target >= ls.length) return ls;
+      // Find the target group's start
+      let targetStart = target;
+      while (targetStart > 0 && ls[targetStart].indent > ls[target].indent && dir === 1) targetStart--;
+      const targetGroupStart = dir === -1 ? (() => { let s = target; while (s > 0 && ls[s-1].indent > ls[target].indent) s--; return s; })() : target;
+      const group = ls.slice(i, groupEnd);
+      const rest = ls.filter((_, idx) => idx < i || idx >= groupEnd);
+      const insertAt = dir === -1 ? targetGroupStart : targetGroupStart;
+      const arr = [...rest.slice(0, insertAt), ...group, ...rest.slice(insertAt)];
       return arr;
+    });
+  };
+
+  const dragLine = useRef<{ id: string } | null>(null);
+  const [dragOverId, setDragOverId] = useState<string | null>(null);
+
+  const handleDragStart = (e: React.DragEvent, line: PaperLine) => {
+    dragLine.current = { id: line.id };
+    e.dataTransfer.effectAllowed = 'move';
+  };
+  const handleDragOver = (e: React.DragEvent, line: PaperLine) => {
+    e.preventDefault();
+    setDragOverId(line.id);
+  };
+  const handleDrop = (e: React.DragEvent, targetLine: PaperLine) => {
+    e.preventDefault();
+    const dragged = dragLine.current;
+    dragLine.current = null;
+    setDragOverId(null);
+    if (!dragged || dragged.id === targetLine.id) return;
+    setLines(ls => {
+      const di = ls.findIndex(l => l.id === dragged.id);
+      const ti = ls.findIndex(l => l.id === targetLine.id);
+      if (di < 0 || ti < 0) return ls;
+      // Move dragged line and its subtask group to before the target
+      const baseIndent = ls[di].indent;
+      let groupEnd = di + 1;
+      while (groupEnd < ls.length && ls[groupEnd].indent > baseIndent) groupEnd++;
+      const group = ls.slice(di, groupEnd);
+      const rest = ls.filter((_, idx) => idx < di || idx >= groupEnd);
+      const newTi = rest.findIndex(l => l.id === targetLine.id);
+      return [...rest.slice(0, newTi), ...group, ...rest.slice(newTi)];
     });
   };
 
@@ -1051,8 +1125,13 @@ function PaperEditor({ title: initTitle, lines: initLines, onSave, onCancel }: {
       insertLineAfter(idx, continuationType);
     } else if (e.key === 'Tab') {
       e.preventDefault();
-      if (line.type==='checkbox') updateLine(line.id, { type:'checkbox-sub' });
-      else if (line.type==='checkbox-sub') updateLine(line.id, { type:'checkbox' });
+      const maxIndent = 3;
+      if (e.shiftKey) {
+        updateLine(line.id, { indent: Math.max(0, (line.indent||0) - 1), type: (line.indent||0) <= 1 ? 'checkbox' : 'checkbox-sub' });
+      } else {
+        const newIndent = Math.min(maxIndent, (line.indent||0) + 1);
+        updateLine(line.id, { indent: newIndent, type: newIndent > 0 ? 'checkbox-sub' : 'checkbox' });
+      }
     } else if (e.key === 'Backspace' && line.text === '' && lines.length > 1) {
       e.preventDefault();
       const prev = lines[idx-1];
@@ -1097,8 +1176,16 @@ function PaperEditor({ title: initTitle, lines: initLines, onSave, onCancel }: {
         {lines.map((line, idx) => {
           const isCb = line.type==='checkbox' || line.type==='checkbox-sub';
           const icon = lineIcon(line.type);
+          const indentPx = (line.indent||0) * 20;
           return (
-            <div key={line.id} className={`paper-line paper-line--${line.type}`}>
+            <div key={line.id} className={`paper-line paper-line--${line.type}${dragOverId===line.id?' paper-line--dragover':''}`}
+              draggable
+              onDragStart={e => handleDragStart(e, line)}
+              onDragOver={e => handleDragOver(e, line)}
+              onDrop={e => handleDrop(e, line)}
+              onDragEnd={() => { dragLine.current=null; setDragOverId(null); }}
+              style={{ paddingLeft: indentPx }}
+            >
               {isCb && (
                 <button
                   className={`paper-cb${line.checked?' paper-cb--checked':''}`}
@@ -1222,7 +1309,9 @@ function PaperItem({ data, isSelected, onSelect, onContextMenu, onRemove, onSave
         overflow:'visible', zIndex:isSelected?1000:(data.z||0)+10 }}
       onMouseDown={handleMD} onContextMenu={onContextMenu}>
 
-      {isSelected && <SelectionOverlay elemId={'paper-'+data.id} rotation={data.rotation} scale={data.scale} onRotate={r=>onRotateEnd(data.id,r)} onResize={s=>onResizeEnd(data.id,s)} />}
+      {isSelected && <div style={{ position:'absolute', top:0, left:0, width:'100%', height:data.height, pointerEvents:'none', zIndex:17 }}>
+        <SelectionOverlay elemId={'paper-'+data.id} rotation={data.rotation} scale={data.scale} onRotate={r=>onRotateEnd(data.id,r)} onResize={s=>onResizeEnd(data.id,s)} />
+      </div>}
       <Decorations hasPin={data.hasPin} hasTape={data.hasTape} pinColor={data.pinColor} tapeColor={data.tapeColor} tapeImage={data.tapeImage} />
 
       <div className={`paper-card ${typeClass}`} style={{
@@ -1300,12 +1389,14 @@ const PAPER_TYPE_LABELS: Record<PaperType, string> = {
 const NOTE_KEY_TEXT = `Sheet shortcut keys:
 Enter → new line
 - + Enter → ☑ checkbox
-Tab → indent as subtask
+Tab → indent (sub-subtasks with repeated Tab)
+
+Shift+Tab → outdent
 -- + Enter → ★ important
 -~ + Enter → ⤳ squiggly  
 -) + Enter → ⤹ curved
 Backspace on empty line → delete line
-↑ ↓ arrows → reorder lines`;
+Drag lines to reorder (subtasks move with their parent)`;
 
 interface PaperCtxProps {
   paper: PaperData; x: number; y: number;
@@ -1315,9 +1406,11 @@ interface PaperCtxProps {
   onEdit: (id: string) => void;
   onLayerUp: (id: string) => void;
   onLayerDown: (id: string) => void;
+  onLayerToFront: (id: string) => void;
+  onLayerToBack: (id: string) => void;
 }
 
-function PaperContextMenu({ paper, x, y, onPatch, onRemove, onDuplicate, onEdit, onLayerUp, onLayerDown }: PaperCtxProps) {
+function PaperContextMenu({ paper, x, y, onPatch, onRemove, onDuplicate, onEdit, onLayerUp, onLayerDown, onLayerToFront, onLayerToBack }: PaperCtxProps) {
   const [showKey, setShowKey] = useState(false);
   const left = Math.min(x, window.innerWidth - 240);
   const top  = Math.min(y, window.innerHeight - 360);
@@ -1371,8 +1464,14 @@ function PaperContextMenu({ paper, x, y, onPatch, onRemove, onDuplicate, onEdit,
         onToggleOff={()=>onPatch(paper.id,{hasPin:false})}
         submenu={colorSub<PaperData>(paper.id,'pinColor',PIN_COLORS,paper.hasPin,paper.pinColor,onPatch)} />
       <CtxRow label="duplicate" onClick={() => onDuplicate(paper)} />
-      <CtxRow label="bring forward" onClick={() => onLayerUp(paper.id)} />
-      <CtxRow label="send backward" onClick={() => onLayerDown(paper.id)} />
+      <CtxRow label="layers" submenu={
+        <>
+          <CtxRow label="bring forward" onClick={() => onLayerUp(paper.id)} />
+          <CtxRow label="bring to front" onClick={() => onLayerToFront(paper.id)} />
+          <CtxRow label="send backward" onClick={() => onLayerDown(paper.id)} />
+          <CtxRow label="send to back" onClick={() => onLayerToBack(paper.id)} />
+        </>
+      } />
       <CtxRow label="delete" danger onClick={() => onRemove(paper.id)} />
       {showKey && (
         <div className="modal-backdrop" onClick={e=>{e.stopPropagation();setShowKey(false);}}>
@@ -1394,32 +1493,42 @@ function PaperContextMenu({ paper, x, y, onPatch, onRemove, onDuplicate, onEdit,
 type AddType = 'note'|'polaroid1'|'photostrip'|'film'|'receipt'|'paper'|'keychain'|'image';
 
 function AddMenu({ onAdd }: { onAdd: (t: AddType) => void }) {
-  const [open, setOpen] = useState(false);
+  const [which, setWhich] = useState<'objects'|'decorations'|null>(null);
   useEffect(() => {
-    if (!open) return;
-    const c = () => setOpen(false);
+    if (!which) return;
+    const c = () => setWhich(null);
     window.addEventListener('click', c);
     return () => window.removeEventListener('click', c);
-  }, [open]);
-  const items: [AddType, string, React.ReactNode][] = [
+  }, [which]);
+
+  const objectItems: [AddType, string, React.ReactNode][] = [
     ['note',      'sticky note',    <StickyNote size={16}/>],
     ['polaroid1', 'polaroid',       <Image size={16}/>],
     ['image',     'image',          <ImageIcon size={16}/>],
+    ['paper',     'sheet of paper', <FileText size={16}/>],
+  ];
+  const decoItems: [AddType, string, React.ReactNode][] = [
     ['photostrip','photo strip',    <Film size={16}/>],
     ['film',      'photo film',     <Film size={16}/>],
     ['receipt',   'receipt',        <Receipt size={16}/>],
-    ['paper',     'sheet of paper', <FileText size={16}/>],
     ['keychain',  'add keychain',   <Link size={16}/>],
   ];
+
   return (
-    <div style={{ position:'fixed', top:10, right:10, zIndex:200 }}>
-      <button className="add-btn" onClick={e=>{e.stopPropagation();setOpen(o=>!o);}} title="Add item">
-        <Plus size={22} />
+    <div style={{ position:'fixed', top:10, right:10, zIndex:200, display:'flex', gap:8 }}>
+      <button className="add-btn" style={{ width:'auto', padding:'0 14px', fontSize:13, fontWeight:500, gap:6, display:'flex', alignItems:'center' }}
+        onClick={e=>{e.stopPropagation();setWhich(w=>w==='objects'?null:'objects');}} title="Add objects">
+        <Plus size={16} /><span>add objects</span>
       </button>
-      {open && (
-        <div className="add-menu" onClick={e=>e.stopPropagation()}>
-          {items.map(([t,label,icon]) => (
-            <button key={t} className="add-menu-item" onClick={()=>{onAdd(t);setOpen(false);}}>
+      <button className="add-btn" style={{ width:'auto', padding:'0 14px', fontSize:13, fontWeight:500, gap:6, display:'flex', alignItems:'center' }}
+        onClick={e=>{e.stopPropagation();setWhich(w=>w==='decorations'?null:'decorations');}} title="Decorations">
+        <Sparkles size={16} /><span>decorations</span>
+      </button>
+      {which && (
+        <div className="add-menu" style={{ right: which==='decorations' ? 0 : 'auto', left: which==='objects' ? 0 : 'auto', top: 48 }}
+          onClick={e=>e.stopPropagation()}>
+          {(which==='objects'?objectItems:decoItems).map(([t,label,icon]) => (
+            <button key={t} className="add-menu-item" onClick={()=>{onAdd(t);setWhich(null);}}>
               {icon}<span>{label}</span>
             </button>
           ))}
@@ -1725,22 +1834,79 @@ interface ImageCtxProps {
   onRemove: (id: string) => void;
   onDuplicate: (img: ImageData) => void;
   onChangeImage: (id: string) => void;
+  onPatch: (id: string, p: Partial<ImageData>) => void;
   onLayerUp: (id: string) => void;
   onLayerDown: (id: string) => void;
+  onLayerToFront: (id: string) => void;
+  onLayerToBack: (id: string) => void;
 }
 
-function ImageContextMenu({ img, x, y, onRemove, onDuplicate, onChangeImage, onLayerUp, onLayerDown }: ImageCtxProps) {
+function ImageContextMenu({ img, x, y, onRemove, onDuplicate, onChangeImage, onPatch, onLayerUp, onLayerDown, onLayerToFront, onLayerToBack }: ImageCtxProps) {
   const left = Math.min(x, window.innerWidth - 210);
-  const top  = Math.min(y, window.innerHeight - 280);
+  const top  = Math.min(y, window.innerHeight - 320);
+  const BORDER_COLORS = ['#000000','#ffffff','#7f1d1d','#1e3a5f','#4d7c0f','#78350f'];
+  const FRAME_STYLES  = ['wood','metal','plastic','ornate'];
+  const FILTER_STYLES = ['sepia','grayscale','vintage','warm','cool','dramatic'];
+  const TEXTURE_STYLES= ['canvas','paper','grain','linen'];
   return (
     <div className="ctx-menu" style={{ left, top }} onClick={e=>e.stopPropagation()}>
       <CtxRow label="change image" onClick={() => onChangeImage(img.id)} />
-      <CtxRow label="add border" onClick={() => {}} />
-      <CtxRow label="add frame" onClick={() => {}} />
-      <CtxRow label="add filter" onClick={() => {}} />
-      <CtxRow label="add texture" onClick={() => {}} />
-      <CtxRow label="bring forward" onClick={() => onLayerUp(img.id)} />
-      <CtxRow label="send backward" onClick={() => onLayerDown(img.id)} />
+      <CtxRow label="add border" toggle checked={img.hasBorder}
+        submenu={
+          <>
+            {BORDER_COLORS.map(c => (
+              <CtxRow key={c} label={c}
+                checked={img.borderColor===c}
+                onClick={() => onPatch(img.id, { hasBorder:true, borderColor:c })} />
+            ))}
+          </>
+        }
+        onToggleOn={() => onPatch(img.id, { hasBorder:true, borderColor:BORDER_COLORS[0] })}
+        onToggleOff={() => onPatch(img.id, { hasBorder:false })} />
+      <CtxRow label="add frame" toggle checked={img.hasFrame}
+        submenu={
+          <>
+            {FRAME_STYLES.map(s => (
+              <CtxRow key={s} label={s}
+                checked={img.frameStyle===s}
+                onClick={() => onPatch(img.id, { hasFrame:true, frameStyle:s })} />
+            ))}
+          </>
+        }
+        onToggleOn={() => onPatch(img.id, { hasFrame:true, frameStyle:FRAME_STYLES[0] })}
+        onToggleOff={() => onPatch(img.id, { hasFrame:false })} />
+      <CtxRow label="add filter" toggle checked={img.hasFilter}
+        submenu={
+          <>
+            {FILTER_STYLES.map(s => (
+              <CtxRow key={s} label={s}
+                checked={img.filterStyle===s}
+                onClick={() => onPatch(img.id, { hasFilter:true, filterStyle:s })} />
+            ))}
+          </>
+        }
+        onToggleOn={() => onPatch(img.id, { hasFilter:true, filterStyle:FILTER_STYLES[0] })}
+        onToggleOff={() => onPatch(img.id, { hasFilter:false })} />
+      <CtxRow label="add texture" toggle checked={img.hasTexture}
+        submenu={
+          <>
+            {TEXTURE_STYLES.map(s => (
+              <CtxRow key={s} label={s}
+                checked={img.textureStyle===s}
+                onClick={() => onPatch(img.id, { hasTexture:true, textureStyle:s })} />
+            ))}
+          </>
+        }
+        onToggleOn={() => onPatch(img.id, { hasTexture:true, textureStyle:TEXTURE_STYLES[0] })}
+        onToggleOff={() => onPatch(img.id, { hasTexture:false })} />
+      <CtxRow label="layers" submenu={
+        <>
+          <CtxRow label="bring forward" onClick={() => onLayerUp(img.id)} />
+          <CtxRow label="bring to front" onClick={() => onLayerToFront(img.id)} />
+          <CtxRow label="send backward" onClick={() => onLayerDown(img.id)} />
+          <CtxRow label="send to back" onClick={() => onLayerToBack(img.id)} />
+        </>
+      } />
       <CtxRow label="duplicate" onClick={() => onDuplicate(img)} />
       <CtxRow label="delete" danger onClick={() => onRemove(img.id)} />
     </div>
@@ -1929,7 +2095,7 @@ export default function Board() {
       if (data) {
         loadedPapers = data.map(p => ({
           id:p.id, left:p.x, top:p.y, rotation:p.rotation??0, scale:p.scale??1,
-          title:p.title??'', lines:p.lines??[], width:p.width??300, height:p.height??400,
+          title:p.title??'', lines:(p.lines??[]).map((l: any) => ({ ...l, indent: l.indent ?? (l.type === 'checkbox-sub' ? 1 : 0) })), width:p.width??300, height:p.height??400,
           paperStyle:(p.paper_style??'lined') as PaperStyle,
           paperColor:(p.paper_color??'cream') as PaperColor,
           paperType:(p.paper_type??'notepad') as PaperType,
@@ -1949,7 +2115,11 @@ export default function Board() {
       if (data) setKeychains(data.map(c => ({ id:c.id, left:c.x, top:c.y, imageUrl:c.image_url??'', attachedRingId:c.attached_ring_id??null, imgOffsetX:c.img_offset_x??0, imgOffsetY:c.img_offset_y??0 })));
     });
     supabase.from('board_images').select('*').order('created_at').then(({ data }) => {
-      if (data) setImages(data.map(im => ({ id:im.id, left:im.x, top:im.y, rotation:im.rotation??0, scale:im.scale??1, imageUrl:im.image_url??'', width:im.width??200, height:im.height??240, z:im.z??0 })));
+      if (data) setImages(data.map(im => ({ id:im.id, left:im.x, top:im.y, rotation:im.rotation??0, scale:im.scale??1, imageUrl:im.image_url??'', width:im.width??200, height:im.height??240, z:im.z??0,
+        hasBorder:im.has_border??false, borderColor:im.border_color??'#000000',
+        hasFrame:im.has_frame??false, frameStyle:im.frame_style??'wood',
+        hasFilter:im.has_filter??false, filterStyle:im.filter_style??'sepia',
+        hasTexture:im.has_texture??false, textureStyle:im.texture_style??'canvas' })));
     });
   }, []);
 
@@ -2019,6 +2189,10 @@ export default function Board() {
         top: rand(60, window.innerHeight - 300),
         rotation: rand(-3, 3), scale: 1, imageUrl: '', width: 200, height: 240,
         z: ++zCounter.current,
+        hasBorder: false, borderColor: '#000000',
+        hasFrame: false, frameStyle: 'wood',
+        hasFilter: false, filterStyle: 'sepia',
+        hasTexture: false, textureStyle: 'canvas',
       };
       setImages(prev => [...prev, img]);
       syncImage(img);
@@ -2302,6 +2476,12 @@ export default function Board() {
   };
 
   // ── Image handlers ──
+  const patchImage = (id: string, patch: Partial<ImageData>) => {
+    const updated = images.map(im => im.id===id ? {...im,...patch} : im);
+    setImages(updated);
+    const im = updated.find(im=>im.id===id); if (im) syncImage(im);
+    setImageCtx(m=>({...m,v:false}));
+  };
   const removeImage = (id: string) => {
     setImages(prev => prev.filter(im=>im.id!==id));
     supabase.from('board_images').delete().eq('id',id);
@@ -2347,6 +2527,29 @@ export default function Board() {
   };
   const layerDown = (type: 'note'|'frame'|'receipt'|'paper'|'image', id: string) => {
     const z = zCounter.current = Math.max(0, zCounter.current - 1);
+    if (type==='note')   { const u = notes.map(n=>n.id===id?{...n,z}:n);   setNotes(u);   const n=u.find(n=>n.id===id); if(n) syncNote(n); }
+    if (type==='frame')  { const u = frames.map(f=>f.id===id?{...f,z}:f);  setFrames(u);  const f=u.find(f=>f.id===id); if(f) syncFrame(f); }
+    if (type==='receipt'){ const u = receipts.map(r=>r.id===id?{...r,z}:r); setReceipts(u); const r=u.find(r=>r.id===id); if(r) syncReceipt(r); }
+    if (type==='paper')  { const u = papers.map(p=>p.id===id?{...p,z}:p);  setPapers(u);  const p=u.find(p=>p.id===id); if(p) syncPaper(p); }
+    if (type==='image')  { const u = images.map(im=>im.id===id?{...im,z}:im); setImages(u); const im=u.find(im=>im.id===id); if(im) syncImage(im); }
+  };
+  const layerToFront = (type: 'note'|'frame'|'receipt'|'paper'|'image', id: string) => {
+    const z = zCounter.current + 1000;
+    zCounter.current = z;
+    if (type==='note')   { const u = notes.map(n=>n.id===id?{...n,z}:n);   setNotes(u);   const n=u.find(n=>n.id===id); if(n) syncNote(n); }
+    if (type==='frame')  { const u = frames.map(f=>f.id===id?{...f,z}:f);  setFrames(u);  const f=u.find(f=>f.id===id); if(f) syncFrame(f); }
+    if (type==='receipt'){ const u = receipts.map(r=>r.id===id?{...r,z}:r); setReceipts(u); const r=u.find(r=>r.id===id); if(r) syncReceipt(r); }
+    if (type==='paper')  { const u = papers.map(p=>p.id===id?{...p,z}:p);  setPapers(u);  const p=u.find(p=>p.id===id); if(p) syncPaper(p); }
+    if (type==='image')  { const u = images.map(im=>im.id===id?{...im,z}:im); setImages(u); const im=u.find(im=>im.id===id); if(im) syncImage(im); }
+  };
+  const layerToBack = (type: 'note'|'frame'|'receipt'|'paper'|'image', id: string) => {
+    // Find current minimum z and set this item below it
+    const allZ = [
+      ...notes.map(n=>n.z), ...frames.map(f=>f.z), ...receipts.map(r=>r.z),
+      ...papers.map(p=>p.z), ...images.map(im=>im.z),
+    ].filter(z => z !== undefined);
+    const minZ = allZ.length ? Math.min(...allZ) : 0;
+    const z = minZ - 10;
     if (type==='note')   { const u = notes.map(n=>n.id===id?{...n,z}:n);   setNotes(u);   const n=u.find(n=>n.id===id); if(n) syncNote(n); }
     if (type==='frame')  { const u = frames.map(f=>f.id===id?{...f,z}:f);  setFrames(u);  const f=u.find(f=>f.id===id); if(f) syncFrame(f); }
     if (type==='receipt'){ const u = receipts.map(r=>r.id===id?{...r,z}:r); setReceipts(u); const r=u.find(r=>r.id===id); if(r) syncReceipt(r); }
@@ -2446,32 +2649,38 @@ export default function Board() {
       {noteCtx.v && activeNote && (
         <NoteContextMenu note={activeNote} x={noteCtx.x} y={noteCtx.y}
           onPatch={patchNote} onRemove={removeNote} onDuplicate={duplicateNote}
-          onLayerUp={id => layerUp('note', id)} onLayerDown={id => layerDown('note', id)} />
+          onLayerUp={id => layerUp('note', id)} onLayerDown={id => layerDown('note', id)}
+          onLayerToFront={id => layerToFront('note', id)} onLayerToBack={id => layerToBack('note', id)} />
       )}
       {frameCtx.v && activeFrame && (
         <FrameContextMenu frame={activeFrame} x={frameCtx.x} y={frameCtx.y}
           onPatch={patchFrame} onRemove={removeFrame}
           onEditCaption={id => { setEditCapId(id); setFrameCtx(m=>({...m,v:false})); }}
           onDuplicate={duplicateFrame}
-          onLayerUp={id => layerUp('frame', id)} onLayerDown={id => layerDown('frame', id)} />
+          onLayerUp={id => layerUp('frame', id)} onLayerDown={id => layerDown('frame', id)}
+          onLayerToFront={id => layerToFront('frame', id)} onLayerToBack={id => layerToBack('frame', id)} />
       )}
       {receiptCtx.v && activeReceipt && (
         <ReceiptContextMenu receipt={activeReceipt} x={receiptCtx.x} y={receiptCtx.y}
           onPatch={patchReceipt} onRemove={removeReceipt} onDuplicate={duplicateReceipt}
           onEdit={id => { setEditReceiptId(id); setReceiptCtx(m=>({...m,v:false})); }}
-          onLayerUp={id => layerUp('receipt', id)} onLayerDown={id => layerDown('receipt', id)} />
+          onLayerUp={id => layerUp('receipt', id)} onLayerDown={id => layerDown('receipt', id)}
+          onLayerToFront={id => layerToFront('receipt', id)} onLayerToBack={id => layerToBack('receipt', id)} />
       )}
       {paperCtx.v && activePaper && (
         <PaperContextMenu paper={activePaper} x={paperCtx.x} y={paperCtx.y}
           onPatch={patchPaper} onRemove={removePaper} onDuplicate={duplicatePaper}
           onEdit={id => { setEditPaperId(id); setPaperCtx(m=>({...m,v:false})); }}
-          onLayerUp={id => layerUp('paper', id)} onLayerDown={id => layerDown('paper', id)} />
+          onLayerUp={id => layerUp('paper', id)} onLayerDown={id => layerDown('paper', id)}
+          onLayerToFront={id => layerToFront('paper', id)} onLayerToBack={id => layerToBack('paper', id)} />
       )}
       {imageCtx.v && activeImage && (
         <ImageContextMenu img={activeImage} x={imageCtx.x} y={imageCtx.y}
           onRemove={removeImage} onDuplicate={duplicateImage}
           onChangeImage={id => { setUploadImageId(id); setImageCtx(m=>({...m,v:false})); }}
-          onLayerUp={id => layerUp('image', id)} onLayerDown={id => layerDown('image', id)} />
+          onPatch={patchImage}
+          onLayerUp={id => layerUp('image', id)} onLayerDown={id => layerDown('image', id)}
+          onLayerToFront={id => layerToFront('image', id)} onLayerToBack={id => layerToBack('image', id)} />
       )}
       {ringCtx.v && activeRing && (
         <KeyringContextMenu ring={activeRing} x={ringCtx.x} y={ringCtx.y}

@@ -730,6 +730,12 @@ div[id^="frame-"]:hover .frame-remove-btn {
   gap: 5px;
   min-height: 30px;
   position: relative;
+  cursor: grab;
+}
+
+.paper-line--dragover {
+  background: rgba(100,149,237,0.12);
+  outline: 1px dashed rgba(100,149,237,0.5);
 }
 
 .paper-line--checkbox-sub {
