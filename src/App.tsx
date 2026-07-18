@@ -419,12 +419,23 @@ function colorSub<T>(
   currentVal: string,
   onPatch: (id: string, p: Partial<T>) => void,
 ) {
+  const isPin = field === 'pinColor';
   return (
     <div className="ctx-submenu">
       {colors.map(c => (
-        <button key={c} className="ctx-color-dot"
-          style={{ background:c, outline: active&&currentVal===c?`2px solid ${darken(c,0.5)}`:'none' }}
-          onClick={() => onPatch(id, { [field]: c, [field==='pinColor'?'hasPin':'hasTape']: true, ...(field==='tapeColor'?{tapeImage:''}:{}) } as Partial<T>)} />
+        <button key={c} className={`ctx-color-dot${isPin?' ctx-color-dot--pin':''}`}
+          style={isPin ? {
+            background:'#fff', padding:0, overflow:'hidden',
+            outline: active&&currentVal===c?`2px solid ${darken(c,0.5)}`:'none',
+          } : {
+            background:c,
+            outline: active&&currentVal===c?`2px solid ${darken(c,0.5)}`:'none',
+          }}
+          onClick={() => onPatch(id, { [field]: c, [isPin?'hasPin':'hasTape']: true, ...(isPin?{}:{tapeImage:''}) } as Partial<T>)}>
+          {isPin && (
+            <PinSvg color={c} />
+          )}
+        </button>
       ))}
       {field === 'tapeColor' && (
         <label className="ctx-upload-row" title="upload tape design">
