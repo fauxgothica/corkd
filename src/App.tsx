@@ -1,10 +1,6 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
 import { createClient } from '@supabase/supabase-js';
-import {
-  Check, Circle, Trash2, ChevronRight, Plus,
-  StickyNote, Image, Film, RotateCw, Undo2, Redo2, Upload, Maximize2,
-  Receipt, FileText, X, Link, ImageIcon,
-} from 'lucide-react';
+import { Check, Circle, Trash2, ChevronRight, Plus, StickyNote, Image, Film, RotateCw, Undo2, Redo2, Upload, Maximize2, Receipt, FileText, X, Link, Image as ImageIcon } from 'lucide-react';
 
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL || 'https://0ec90b57d6e95fcbda19832f.supabase.co';
 const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJib2x0IiwicmVmIjoiMGVjOTBiNTdkNmU5NWZjYmRhMTk4MzJmIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTg4ODE1NzQsImV4cCI6MTc1ODg4MTU3NH0.9I8-U0x86Ak8t2DGaIk0HfvTSLsAyzdnz-Nw00mMkKw';
@@ -80,12 +76,18 @@ interface KeyringData {
 interface KeychainData {
   id: string; left: number; top: number; imageUrl: string; attachedRingId: string | null;
   imgOffsetX: number; imgOffsetY: number;
+  hookColor: 'silver' | 'bronze' | 'gold';
 }
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
 const NOTE_COLORS  = ['#fef08a','#fbcfe8','#bfdbfe','#bbf7d0','#fed7aa','#e9d5ff'];
-const PIN_COLORS   = ['#d8c35a','#ef4444','#3b82f6','#22c55e','#f59e0b','#ec4899'];
+const PIN_COLORS   = [
+  '#ef4444','#3b82f6','#6b8fa3', // red, blue, steel-blue
+  '#a855f7','#ec4899','#c08080', // purple, pink, dusty-rose
+  '#22c55e','#84cc16','#d8c35a', // bright-green, light-green, yellow-olive
+  '#8b6914','#f97316','#6b7280', // brown, orange, gray
+];
 const TAPE_COLORS  = ['#fef08a','#fed7aa','#bbf7d0','#bfdbfe','#fbcfe8','#e9d5ff'];
 const PIN_DEFAULT  = '#d8c35a';
 
@@ -262,7 +264,7 @@ async function syncKeyring(k: KeyringData) {
 }
 
 async function syncKeychain(k: KeychainData) {
-  await supabase.from('keychains').upsert({ id:k.id, x:k.left, y:k.top, image_url:k.imageUrl, attached_ring_id:k.attachedRingId, img_offset_x:k.imgOffsetX, img_offset_y:k.imgOffsetY });
+  await supabase.from('keychains').upsert({ id:k.id, x:k.left, y:k.top, image_url:k.imageUrl, attached_ring_id:k.attachedRingId, img_offset_x:k.imgOffsetX, img_offset_y:k.imgOffsetY, hook_color:k.hookColor??'silver' });
 }
 
 async function syncImage(img: ImageData) {
@@ -1550,7 +1552,12 @@ function AddMenu({ onAdd }: { onAdd: (t: AddType) => void }) {
 
 // ─── Keyring + Keychain ────────────────────────────────────────────────────────
 
-const RING_COLORS = ['#4ade80','#f9a8d4','#93c5fd','#fcd34d','#c4b5fd','#fb923c'];
+const RING_COLORS = [
+  '#ef4444','#3b82f6','#6b8fa3', // red, blue, steel-blue
+  '#a855f7','#ec4899','#c08080', // purple, pink, dusty-rose
+  '#4ade80','#84cc16','#d8c35a', // bright-green, light-green, yellow-olive
+  '#8b6914','#f97316','#6b7280', // brown, orange, gray
+];
 const SNAP_RADIUS = 70; // px — how close the hook needs to be to snap
 
 interface KeyringCtxProps { ring: KeyringData; x:number; y:number; onPatch:(id:string,p:Partial<KeyringData>)=>void; onRemove:(id:string)=>void; }
@@ -1608,14 +1615,20 @@ function KeyringItem({ data, onContextMenu, onChange }: {
 }
 
 function ringHueShift(color: string): number {
-  // green.svg is green — shift hue to approximate the desired color
+  // green.svg base hue ≈ 142°
   const map: Record<string, number> = {
-    '#4ade80': 0,      // green (base)
-    '#f9a8d4': -120,   // pink
-    '#93c5fd': -175,   // blue
-    '#fcd34d': 60,     // yellow
-    '#c4b5fd': -145,   // purple
-    '#fb923c': 80,     // orange
+    '#4ade80':   0,   // bright-green (base, same hue)
+    '#ef4444': -100,  // red
+    '#3b82f6': -160,  // blue
+    '#6b8fa3': -165,  // steel-blue
+    '#a855f7': -135,  // purple
+    '#ec4899': -120,  // pink
+    '#c08080': -100,  // dusty-rose
+    '#84cc16':  -20,  // light-green/olive
+    '#d8c35a':   55,  // yellow-olive
+    '#8b6914':   65,  // brown
+    '#f97316':   80,  // orange
+    '#6b7280': -200,  // gray
   };
   return map[color] ?? 0;
 }
@@ -1729,13 +1742,27 @@ function KeychainUploadPrompt({ onUpload, onCancel }: {
   );
 }
 
-interface KeychainCtxProps { chain:KeychainData; x:number; y:number; onChangeImage:()=>void; onDetach:()=>void; onUnlockMove:()=>void; onRemove:(id:string)=>void; }
-function KeychainContextMenu({ chain, x, y, onChangeImage, onDetach, onRemove }: KeychainCtxProps) {
+interface KeychainCtxProps { chain:KeychainData; x:number; y:number; onChangeImage:()=>void; onDetach:()=>void; onUnlockMove:()=>void; onRemove:(id:string)=>void; onPatch:(id:string,p:Partial<KeychainData>)=>void; }
+function KeychainContextMenu({ chain, x, y, onChangeImage, onDetach, onRemove, onPatch }: KeychainCtxProps) {
   const left = Math.min(x, window.innerWidth - 210);
   const top  = Math.min(y, window.innerHeight - 200);
+  const HOOK_COLORS: { name: 'silver'|'bronze'|'gold'; color: string }[] = [
+    { name:'silver', color:'#c0c0c0' },
+    { name:'bronze', color:'#cd7f32' },
+    { name:'gold',   color:'#ffd700' },
+  ];
   return (
     <div className="ctx-menu" style={{ left, top }} onClick={e=>e.stopPropagation()}>
       <CtxRow label="change image" onClick={onChangeImage} />
+      <CtxRow label="hook color" submenu={
+        <div className="ctx-submenu">
+          {HOOK_COLORS.map(({ name, color }) => (
+            <button key={name} className="ctx-color-dot"
+              style={{ background:color, outline: chain.hookColor===name?`2px solid ${darken2(color,0.5)}`:'none' }}
+              onClick={() => onPatch(chain.id, { hookColor:name })} />
+          ))}
+        </div>
+      } />
       {chain.attachedRingId && <CtxRow label="detach from ring" onClick={onDetach} />}
       <CtxRow label="delete" danger onClick={() => onRemove(chain.id)} />
     </div>
@@ -1808,7 +1835,7 @@ function KeychainItem({ data, rings, onContextMenu, onDragEnd, onAttach, onDetac
         }}>
 
         {/* Hook — centered under the ring. The ring (z-index 30) covers the top portion */}
-        <img src="/hookything.svg" alt=""
+        <img src={data.hookColor==='gold'?'/gold.svg':data.hookColor==='bronze'?'/bronze.svg':'/hookything.svg'} alt=""
           style={{ width: HOOK_W, height: HOOK_W, display: 'block', pointerEvents: 'none',
             position: 'relative', zIndex: 24, marginBottom: -12 }} />
 
@@ -2120,7 +2147,7 @@ export default function Board() {
       if (data) setKeyrings(data.map(r => ({ id:r.id, left:r.x, top:r.y, color:r.color??'#4ade80', locked:r.locked??true })));
     });
     supabase.from('keychains').select('*').order('created_at').then(({ data }) => {
-      if (data) setKeychains(data.map(c => ({ id:c.id, left:c.x, top:c.y, imageUrl:c.image_url??'', attachedRingId:c.attached_ring_id??null, imgOffsetX:c.img_offset_x??0, imgOffsetY:c.img_offset_y??0 })));
+      if (data) setKeychains(data.map(c => ({ id:c.id, left:c.x, top:c.y, imageUrl:c.image_url??'', attachedRingId:c.attached_ring_id??null, imgOffsetX:c.img_offset_x??0, imgOffsetY:c.img_offset_y??0, hookColor:(c.hook_color as 'silver'|'bronze'|'gold')??'silver' })));
     });
     supabase.from('board_images').select('*').order('created_at').then(({ data }) => {
       if (data) setImages(data.map(im => ({ id:im.id, left:im.x, top:im.y, rotation:im.rotation??0, scale:im.scale??1, imageUrl:im.image_url??'', width:im.width??200, height:im.height??240, z:im.z??0,
@@ -2186,7 +2213,7 @@ export default function Board() {
       setKeyrings(prev => [...prev, ring]);
       syncKeyring(ring);
       // Add a keychain body without image yet — will be filled by upload prompt
-      const chain: KeychainData = { id: crypto.randomUUID(), left: ring.left - 4, top: ring.top + 36, imageUrl: '', attachedRingId: ring.id, imgOffsetX: 0, imgOffsetY: 0 };
+      const chain: KeychainData = { id: crypto.randomUUID(), left: ring.left - 4, top: ring.top + 36, imageUrl: '', attachedRingId: ring.id, imgOffsetX: 0, imgOffsetY: 0, hookColor: 'silver' };
       setKeychains(prev => [...prev, chain]);
       syncKeychain(chain);
       setPendingUploadChainId(chain.id);
@@ -2482,6 +2509,12 @@ export default function Board() {
     setUploadChainId(null); setPendingUploadChainId(null);
     setChainCtx(m=>({...m,v:false}));
   };
+  const patchKeychain = (id: string, patch: Partial<KeychainData>) => {
+    const updated = keychains.map(c => c.id===id ? {...c,...patch} : c);
+    setKeychains(updated);
+    const c = updated.find(c=>c.id===id); if (c) syncKeychain(c);
+    setChainCtx(m=>({...m,v:false}));
+  };
 
   // ── Image handlers ──
   const patchImage = (id: string, patch: Partial<ImageData>) => {
@@ -2706,7 +2739,8 @@ export default function Board() {
           onChangeImage={() => { setUploadChainId(activeChain.id); setChainCtx(m=>({...m,v:false})); }}
           onDetach={() => { detachChain(activeChain.id); setChainCtx(m=>({...m,v:false})); }}
           onUnlockMove={() => setChainCtx(m=>({...m,v:false}))}
-          onRemove={removeKeychain} />
+          onRemove={removeKeychain}
+          onPatch={patchKeychain} />
       )}
 
       {/* Receipt editor modal */}
